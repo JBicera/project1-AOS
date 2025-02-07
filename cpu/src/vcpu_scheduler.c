@@ -1,10 +1,12 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <libvirt/libvirt.h>
 #include <math.h>
 #include <string.h>
 #include <unistd.h>
 #include <limits.h>
+#include <float.h>
 #include <signal.h>
 #define MIN(a, b) ((a) < (b) ? a : b)
 #define MAX(a, b) ((a) > (b) ? a : b)
@@ -109,7 +111,7 @@ void calcVCPUInformation(vCPUInfo* vcpus, int numVCPUs, int interval) {
 // Helper Function: Calculate the PCPU load
 void calcPCPULoad(vCPUInfo* vcpus, int numVCPUs, pCPUInfo* pcpus, int numPCPUs) {
 	// Initialize values to zero
-	for (int i = 0; i < numPcpus; i++) {
+	for (int i = 0; i < numPCPUs; i++) {
 		pcpus[i].totalLoad = 0.0;
 		pcpus[i].numVcpus = 0;
 	}
@@ -205,8 +207,8 @@ void CPUScheduler(virConnectPtr conn, int interval) // conn = connection object,
 {
     static vCPUInfo* vcpus = NULL;
     static pCPUInfo* pcpus = NULL;
-	static int numVCPUs = 0;
-	static int numPCPUs = 0;
+	static unsigned int numVCPUs = 0;
+	static unsigned int numPCPUs = 0;
     static int initialized = 0;
 
     virDomainPtr* domains;
