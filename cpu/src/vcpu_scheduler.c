@@ -207,14 +207,14 @@ void CPUScheduler(virConnectPtr conn, int interval) // conn = connection object,
 {
     static vCPUInfo* vcpus = NULL;
     static pCPUInfo* pcpus = NULL;
-	static unsigned int numVCPUs = 0;
-	static unsigned int numPCPUs = 0;
+    static unsigned int numVCPUs = 0;
+    static unsigned int numPCPUs = 0;
     static int initialized = 0;
 
     virDomainPtr* domains;
     int numDomains;
 
-	// Get all domains
+    // Get all domains
     numDomains = virConnectListAllDomains(conn, &domains, VIR_CONNECT_LIST_DOMAINS_ACTIVE);
     if (numDomains <= 0)
     {
@@ -277,15 +277,15 @@ void CPUScheduler(virConnectPtr conn, int interval) // conn = connection object,
                 memset(cpumap, 0, sizeof(cpumap));
                 int ret = virDomainGetVcpuPinInfo(domains[i], j, cpumap, VIR_CPU_MAPLEN(numPCPUs), 0);
                 if (ret < 0) {
-                    // If the call fails (No pinning is configured) assume a default cpumap that allows the vCPU to run on all PCPUs.
-                    memset(cpumap, 0xFF, sizeof(cpumap));
+                    vcpus[index].currentPCPU = 0;
                 }
-
-                // Now choose the first available PCPU from thecpumap.
-                for (int k = 0; k < numPCPUs; k++) {
-                    if (cpumap[k / 8] & (1 << (k % 8))) { // Check if the k-th PCPU is allowed for this vCPU
-                        vcpus[index].currentPCPU = k; // Assign vCPU to this PCPU
-                        break;
+                else {
+                    // Use the returned cpumap.
+                    for (int k = 0; k < numPCPUs; k++) {
+                        if (cpumap[k / 8] & (1 << (k % 8))) { // Check if the k-th PCPU is allowed for this vCPU
+                            vcpus[index].currentPCPU = k; // Record the default pin
+                            break;
+                        }
                     }
                 }
                 index++;
@@ -300,3 +300,4 @@ void CPUScheduler(virConnectPtr conn, int interval) // conn = connection object,
 
     free(domains);
 }
+
