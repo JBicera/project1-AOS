@@ -214,8 +214,8 @@ void CPUScheduler(virConnectPtr conn, int interval) // conn = connection object,
     int numDomains;
 
     // List all domains
-    int ret = virConnectListAllDomains(conn, &domains,0);
-    if (ret < 0)
+    int numDomains = virConnectListAllDomains(conn, &domains,0);
+    if (numDomains < 0)
     {
         fprintf(stderr, "Error: Unable to list active domains\n");
         return;
