@@ -11,139 +11,96 @@
 #define MIN(a, b) ((a) < (b) ? a : b)
 #define MAX(a, b) ((a) > (b) ? a : b)
 
-int is_exit = 0; // DO NOT MODIFY THIS VARIABLE
-void CPUScheduler(virConnectPtr conn, int interval);
-
-typedef struct {
-	virDomainPtr domain;  // VM Reference
-	int vcpuId;           // VCPU index
-	int currentPCPU;      // Currently pinned PCPU
-	uint64_t prevTime;    // Previous cumulative time
-	uint64_t currTime;    // Current cumulative time
-	double utilization;   // Percentage utilization
-} vCPUInfo;
-
-typedef struct {
-	int pcpuId;          // PCPU index
-	double totalLoad;    // Total CPU utilization from assigned VCPUs
-	int numVcpus;        // Number of VCPUs assigned
-} pCPUInfo;
-
-
-/*
-DO NOT CHANGE THE FOLLOWING FUNCTION
-*/
+// DO NOT MODIFY THIS VARIABLE
+int is_exit = 0;
 void signal_callback_handler()
 {
-	printf("Caught Signal");
-	is_exit = 1;
+    printf("Caught Signal");
+    is_exit = 1;
 }
 
-/*
-DO NOT CHANGE THE FOLLOWING FUNCTION
-*/
-int main(int argc, char *argv[])
-{
-	virConnectPtr conn;
+void CPUScheduler(virConnectPtr conn, int interval);
 
-	if (argc != 2)
-	{
-		printf("Incorrect number of arguments\n");
-		return 0;
-	}
+// Data structures – using capitalized names for consistency
+typedef struct {
+    virDomainPtr domain;  // Domain pointer 
+    int vcpuId;           // VCPU index 
+    int currentPCPU;      // Currently assigned PCPU
+    uint64_t prevTime;    // Previous cumulative CPU time 
+    uint64_t currTime;    // Current cumulative CPU time 
+    double utilization;   // Calculated CPU utilization (in percent)
+} VCPUInfo;
 
-	// Gets the interval passes as a command line argument and sets it as the STATS_PERIOD for collection of balloon memory statistics of the domains
-	int interval = atoi(argv[1]);
+typedef struct {
+    int pcpuId;          // PCPU index
+    double totalLoad;    // Total CPU utilization from assigned VCPUs (in percent)
+    int numVcpus;        // Number of VCPUs currently assigned to this PCPU
+} PCPUInfo;
 
-	conn = virConnectOpen("qemu:///system");
-	if (conn == NULL)
-	{
-		fprintf(stderr, "Failed to open connection\n");
-		return 1;
-	}
+// --- Helper Functions ---
 
-	// Get the total number of pCpus in the host
-	signal(SIGINT, signal_callback_handler);
+// Calculates VCPU utilization based on the change in cumulative CPU time.
+void calcVCPUInformation(VCPUInfo* vcpus, int numVCPUs, int interval) {
+    const int numParams = 1; // We only need one parameter: CPU time
+    for (int i = 0; i < numVCPUs; i++) {
+        virTypedParameter params[numParams];
+        // Get CPU stats for current VCPU (using vcpuId)
+        if (virDomainGetCPUStats(vcpus[i].domain, params, numParams, vcpus[i].vcpuId, 1, 0) == -1) {
+            fprintf(stderr, "Error: Unable to get CPU stats for VCPU %d\n", vcpus[i].vcpuId);
+            continue;
+        }
+        uint64_t previousTime = vcpus[i].currTime; // Save previous time
+        vcpus[i].currTime = params[0].value.ul;      // Update current time from stats
 
-	while (!is_exit)
-	// Run the CpuScheduler function that checks the CPU Usage and sets the pin at an interval of "interval" seconds
-	{
-		CPUScheduler(conn, interval);
-		sleep(interval);
-	}
-
-	// Closing the connection
-	virConnectClose(conn);
-	return 0;
-}
-// Helper Function: Calculate VCPU information
-void calcVCPUInformation(vCPUInfo* vcpus, int numVCPUs, int interval) {
-	// Only need one parameter cpu_time
-	const int numParams = 1;
-
-	// Iterate over all VCPUs
-	for (int i = 0; i < numVCPUs; i++) {
-		// Allocate an array for the stats on the stack (since numParams is constant)
-		virTypedParameter params[numParams];
-
-		// Get CPU stats for current VCPU (vcpus[i].vcpuId) and exit if unable to
-		if (virDomainGetCPUStats(vcpus[i].domain, params, numParams, vcpus[i].vcpuId, 1, 0) == -1) {
-			fprintf(stderr, "Error: Unable to get CPU stats for VCPU %d\n", vcpus[i].vcpuId);
-			continue;
-		}
-
-		uint64_t previousTime = vcpus[i].currTime; // Save the previous cumulative time
-		vcpus[i].currTime = params[0].value.ul; // Update current time
-
-		// If previous time exist, calculate difference
-		if (previousTime > 0) {
-			uint64_t diff = vcpus[i].currTime - previousTime;
-			// Utilization = 100 * VCPU time used during interval / Total available time for that vCPU durign that interval 
-			vcpus[i].utilization = ((double)diff / (interval * 1000000000)) * 100.0;
-		}
-		else {
-			// First run so utilization is still zero
-			vcpus[i].utilization = 0.0;
-		}
-	}
+        if (previousTime > 0) {
+            uint64_t diff = vcpus[i].currTime - previousTime;
+            // Calculate utilization: (diff / (interval in nanoseconds)) * 100
+            vcpus[i].utilization = ((double)diff / (interval * 1000000000)) * 100.0;
+        }
+        else {
+            vcpus[i].utilization = 0.0;
+        }
+    }
 }
 
-// Helper Function: Calculate the PCPU load
-void calcPCPULoad(vCPUInfo* vcpus, int numVCPUs, pCPUInfo* pcpus, int numPCPUs) {
-	// Initialize values to zero
-	for (int i = 0; i < numPCPUs; i++) {
-		pcpus[i].totalLoad = 0.0;
-		pcpus[i].numVcpus = 0;
-	}
-	// Increment values
-	for (int i = 0; i < numVCPUs; i++) {
-		int pcpuId = vcpus[i].currentPCPU;
-		pcpus[pcpuId].totalLoad += vcpus[i].utilization;
-		pcpus[pcpuId].numVcpus++;
-	}
+// Aggregates the utilization of VCPUs per physical CPU.
+void calcPCPULoad(VCPUInfo* vcpus, int numVCPUs, PCPUInfo* pcpus, int numPCPUs) {
+    // Initialize each PCPU info to zero.
+    for (int i = 0; i < numPCPUs; i++) {
+        pcpus[i].totalLoad = 0.0;
+        pcpus[i].numVcpus = 0;
+    }
+    // Sum the utilization for each PCPU.
+    for (int i = 0; i < numVCPUs; i++) {
+        int pcpuId = vcpus[i].currentPCPU;
+        if (pcpuId >= 0 && pcpuId < numPCPUs) {
+            pcpus[pcpuId].totalLoad += vcpus[i].utilization;
+            pcpus[pcpuId].numVcpus++;
+        }
+    }
 }
 
-// Helper function to repin vCPUs to the least-loaded pCPUs
-void repinVCPUs(vCPUInfo* vcpus, int numVCPUs, pCPUInfo* pcpus, int numPCPUs) {
-    // Recalculate the load on each pCPU (reset and recount)
+// Attempts to repin VCPUs from overutilized PCPUs to underutilized ones.
+void repinVCPUs(VCPUInfo* vcpus, int numVCPUs, PCPUInfo* pcpus, int numPCPUs) {
+    // Recalculate PCPU load for current mapping
     for (int i = 0; i < numPCPUs; i++) {
         pcpus[i].totalLoad = 0.0;
         pcpus[i].numVcpus = 0;
     }
     for (int i = 0; i < numVCPUs; i++) {
         int assignedPCPU = vcpus[i].currentPCPU;
-        pcpus[assignedPCPU].totalLoad += vcpus[i].utilization;
-        pcpus[assignedPCPU].numVcpus++;
+        if (assignedPCPU >= 0 && assignedPCPU < numPCPUs) {
+            pcpus[assignedPCPU].totalLoad += vcpus[i].utilization;
+            pcpus[assignedPCPU].numVcpus++;
+        }
     }
 
-    // Calculate average load and standard deviation
+    // Compute average load and standard deviation across PCPUs
     double totalLoad = 0.0;
     for (int i = 0; i < numPCPUs; i++) {
         totalLoad += pcpus[i].totalLoad;
     }
     double avgLoad = totalLoad / numPCPUs;
-
-    // Calculate the standard deviation of loads
     double sumSquaredDiffs = 0.0;
     for (int i = 0; i < numPCPUs; i++) {
         double diff = pcpus[i].totalLoad - avgLoad;
@@ -151,163 +108,166 @@ void repinVCPUs(vCPUInfo* vcpus, int numVCPUs, pCPUInfo* pcpus, int numPCPUs) {
     }
     double stdDev = sqrt(sumSquaredDiffs / numPCPUs);
 
-    // Identify overutilized and underutilized PCPUs
     double overutilizedThreshold = avgLoad + stdDev;
     double underutilizedThreshold = avgLoad - stdDev;
 
-    // Create lists of overutilized and underutilized PCPUs
+    // For each VCPU, if its current PCPU is overutilized, try to move it to a less-loaded one.
     for (int i = 0; i < numVCPUs; i++) {
         int currentPCPU = vcpus[i].currentPCPU;
+        if (currentPCPU < 0 || currentPCPU >= numPCPUs)
+            continue;
         double currentLoad = pcpus[currentPCPU].totalLoad;
-
-        // If the current PCPU is overutilized or underutilized, attempt to repin
         if (currentLoad > overutilizedThreshold) {
             int leastLoadedPCPU = -1;
             double minLoad = FLT_MAX;
-
-            // Look for an underutilized PCPU to repin the vCPU to
+            // Find an underutilized PCPU
             for (int j = 0; j < numPCPUs; j++) {
                 if (pcpus[j].totalLoad < underutilizedThreshold && pcpus[j].totalLoad < minLoad) {
                     leastLoadedPCPU = j;
                     minLoad = pcpus[j].totalLoad;
                 }
             }
-
-            // If a valid underutilized PCPU is found, repin vCPU
             if (leastLoadedPCPU != -1) {
-                // Prepare a cpumap that allows only the least loaded pCPU.
+                // Prepare a cpumap that allows only the target PCPU.
                 unsigned char cpumap[VIR_CPU_MAPLEN(numPCPUs)];
                 memset(cpumap, 0, sizeof(cpumap));
                 cpumap[leastLoadedPCPU / 8] |= (1 << (leastLoadedPCPU % 8));
 
-                // Call virDomainPinVcpu to update the vCPU's pinning on the hypervisor
+                // Attempt to repin the VCPU
                 if (virDomainPinVcpu(vcpus[i].domain, vcpus[i].vcpuId, cpumap, VIR_CPU_MAPLEN(numPCPUs)) == 0) {
-                    // Update pCPU load information: remove load from the old pCPU and add to the new pCPU
-                    pcpus[currentPCPU].totalLoad -= vcpus[i].utilization;
-                    pcpus[currentPCPU].numVcpus--;
-                    pcpus[leastLoadedPCPU].totalLoad += vcpus[i].utilization;
-                    pcpus[leastLoadedPCPU].numVcpus++;
-
-                    // Update the vCPU's current assigned pCPU
+                    printf("Repinned VCPU %d from PCPU %d to PCPU %d\n", vcpus[i].vcpuId, currentPCPU, leastLoadedPCPU);
                     vcpus[i].currentPCPU = leastLoadedPCPU;
-                    printf("Repinned vCPU %d from overutilized pCPU %d to underutilized pCPU %d\n", vcpus[i].vcpuId, currentPCPU, leastLoadedPCPU);
                 }
                 else {
-                    fprintf(stderr, "Error: Failed to repin vCPU %d to pCPU %d\n", vcpus[i].vcpuId, leastLoadedPCPU);
+                    fprintf(stderr, "Error: Failed to repin VCPU %d to PCPU %d\n", vcpus[i].vcpuId, leastLoadedPCPU);
                 }
             }
         }
     }
 }
 
-
-
-/* COMPLETE THE IMPLEMENTATION */
-void CPUScheduler(virConnectPtr conn, int interval) // conn = connection object, interval = how often to check
+// This function is called repeatedly. It initializes VCPU and PCPU data only once though
+void CPUScheduler(virConnectPtr conn, int interval)
 {
-    static vCPUInfo* vcpus = NULL;
-    static pCPUInfo* pcpus = NULL;
+    static VCPUInfo* vcpus = NULL;
+    static PCPUInfo* pcpus = NULL;
     static unsigned int numVCPUs = 0;
     static unsigned int numPCPUs = 0;
 
     virDomainPtr* domains;
+    int numDomains;
 
-    // List all domains
-    int numDomains = virConnectListAllDomains(conn, &domains,0);
-    if (numDomains < 0)
-    {
+    // List all active domains; the return value is the number of domains.
+    numDomains = virConnectListAllDomains(conn, &domains, 0);
+    if (numDomains < 0) {
         fprintf(stderr, "Error: Unable to list active domains\n");
         return;
     }
-    // Initialize PCPUs if first time 
+
+    // --- Initialize PCPUs ---
     if (numPCPUs == 0) {
         int nparams = 0;
-
-        // Retrieve the number of CPU stats parameters
-        if (virNodeGetCPUStats(conn, -1, NULL, &nparams, 0) < 0 || nparams == 0) {
+        // Use virNodeGetCPUStats to get the number of CPU stats parameters.
+        if (virNodeGetCPUStats(conn, VIR_NODE_CPU_STATS_ALL_CPUS, NULL, &nparams, 0) < 0 || nparams == 0) {
             fprintf(stderr, "Error: Unable to retrieve number of CPU stats parameters\n");
+            // Free domains before returning
+            for (int i = 0; i < numDomains; i++) {
+                virDomainFree(domains[i]);
+            }
+            free(domains);
             return;
         }
-        // Allocate memory for the params array
-        virNodeCPUStatsPtr params = malloc(sizeof(virNodeCPUStats) * nparams);
-        if (!params) {
+        // Allocate a temporary array to hold CPU stats.
+        virNodeCPUStatsPtr stats = malloc(sizeof(virNodeCPUStats) * nparams);
+        if (!stats) {
             fprintf(stderr, "Error: Memory allocation failed for CPU stats parameters\n");
+            for (int i = 0; i < numDomains; i++) {
+                virDomainFree(domains[i]);
+            }
+            free(domains);
             return;
         }
-        // Retrieve the actual CPU stats
-        if (virNodeGetCPUStats(conn, -1, params, &nparams, 0) < 0) {
+        memset(stats, 0, sizeof(virNodeCPUStats) * nparams);
+        if (virNodeGetCPUStats(conn, VIR_NODE_CPU_STATS_ALL_CPUS, stats, &nparams, 0) < 0) {
             fprintf(stderr, "Error: Failed to get CPU stats\n");
-            free(params);
+            free(stats);
+            for (int i = 0; i < numDomains; i++) {
+                virDomainFree(domains[i]);
+            }
+            free(domains);
             return;
         }
+        // Assume each parameter corresponds to one physical CPU.
         numPCPUs = nparams;
+        free(stats);
 
-        // Allocate PCPU array 
-        pcpus = malloc(numPCPUs * sizeof(pCPUInfo));
+        // Allocate and initialize the PCPU array.
+        pcpus = malloc(numPCPUs * sizeof(PCPUInfo));
         if (!pcpus) {
-            fprintf(stderr, "Error: Memory allocation failed for PCPUs.\n");
+            fprintf(stderr, "Error: Memory allocation failed for PCPUInfo array\n");
+            for (int i = 0; i < numDomains; i++) {
+                virDomainFree(domains[i]);
+            }
+            free(domains);
             return;
         }
-
-        // Initialize PCPU info to default
         for (int i = 0; i < numPCPUs; i++) {
             pcpus[i].pcpuId = i;
             pcpus[i].totalLoad = 0.0;
             pcpus[i].numVcpus = 0;
         }
-        free(params);
     }
 
-    // Initialize VCPUS if first time 
+    // --- Initialize VCPUs ---
     if (numVCPUs == 0) {
-        // Calculate number of VCPUs across all domains
+        // First, count the total number of VCPUs across all domains.
         for (int i = 0; i < numDomains; i++) {
             virDomainPtr domain = domains[i];
             virDomainInfo info;
-
             if (virDomainGetInfo(domain, &info) != 0) {
                 fprintf(stderr, "Error: Unable to get domain info for domain %d\n", i);
                 continue;
             }
-            numVCPUs += info.nrVirtCpu;  // Sum the number of vCPUs for this domain
+            numVCPUs += info.nrVirtCpu;
         }
-
-        // Allocate VCPU array
-        vcpus = malloc(numVCPUs * sizeof(vCPUInfo));
+        // Allocate the VCPU array.
+        vcpus = malloc(numVCPUs * sizeof(VCPUInfo));
         if (!vcpus) {
-            fprintf(stderr, "Error: Memory allocation failed for VCPUS.\n");
+            fprintf(stderr, "Error: Memory allocation failed for VCPUInfo array\n");
+            for (int i = 0; i < numDomains; i++) {
+                virDomainFree(domains[i]);
+            }
+            free(domains);
             return;
         }
-
-        // Initialize vCPU info to default
+        // Initialize VCPU info.
         int vcpuIndex = 0;
         for (int i = 0; i < numDomains; i++) {
             virDomainPtr domain = domains[i];
             virDomainInfo info;
-
             if (virDomainGetInfo(domain, &info) != 0) {
                 fprintf(stderr, "Error: Unable to get info for domain %d\n", i);
                 continue;
             }
-
-            // For each vCPU in the current domain, initialize its information
             for (int j = 0; j < info.nrVirtCpu; j++) {
-                vcpus[vcpuIndex].domain = domain;
+                // Retain the domain pointer by increasing its reference count.
+                vcpus[vcpuIndex].domain = virDomainRef(domain);
                 vcpus[vcpuIndex].vcpuId = j;
                 vcpus[vcpuIndex].prevTime = 0;
                 vcpus[vcpuIndex].currTime = 0;
                 vcpus[vcpuIndex].utilization = 0.0;
                 vcpus[vcpuIndex].currentPCPU = -1;
 
-                // Retrieve the current PCPU for the vCPU
+                // Retrieve the current PCPU pinning for the vCPU.
                 unsigned char cpumap[VIR_CPU_MAPLEN(numPCPUs)];
                 memset(cpumap, 0, sizeof(cpumap));
                 int ret = virDomainGetVcpuPinInfo(domain, j, cpumap, VIR_CPU_MAPLEN(numPCPUs), 0);
                 if (ret < 0) {
-                    vcpus[vcpuIndex].currentPCPU = 0; // Default Value
+                    // If no explicit pinning is configured, use the hypervisor’s default.
+                    vcpus[vcpuIndex].currentPCPU = 0;
                 }
                 else {
-                    // Find the PCPU that the vCPU is currently pinned to
+                    // Otherwise, set the vCPU's current PCPU to the first allowed one.
                     for (int k = 0; k < numPCPUs; k++) {
                         if (cpumap[k / 8] & (1 << (k % 8))) {
                             vcpus[vcpuIndex].currentPCPU = k;
@@ -319,14 +279,15 @@ void CPUScheduler(virConnectPtr conn, int interval) // conn = connection object,
             }
         }
     }
+
+    // Now update VCPU utilization, PCPU load, and attempt repinning.
     calcVCPUInformation(vcpus, numVCPUs, interval);
     calcPCPULoad(vcpus, numVCPUs, pcpus, numPCPUs);
     repinVCPUs(vcpus, numVCPUs, pcpus, numPCPUs);
 
-    // Free domain pointers
+    // Free the domains list (domain pointers have been referenced already)
     for (int i = 0; i < numDomains; i++) {
         virDomainFree(domains[i]);
     }
     free(domains);
 }
-
