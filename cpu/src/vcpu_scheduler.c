@@ -214,90 +214,105 @@ void CPUScheduler(virConnectPtr conn, int interval) // conn = connection object,
     virDomainPtr* domains;
     int numDomains;
 
-    // Get all domains
-    numDomains = virConnectListAllDomains(conn, &domains, VIR_CONNECT_LIST_DOMAINS_ACTIVE);
-    if (numDomains <= 0)
+    // List all domains
+    domains = virConnectListAllDomains(conn, VIR_DOMAIN_LIST_ACTIVE, &numDomains);
+    if (domains == NULL || numDomains == 0)
     {
         fprintf(stderr, "Error: Unable to list active domains\n");
         return;
     }
-
-    // Do one-time initialization. Essentially recording the default state of the pins and initializing values 
-    if (!initialized) {
-        // Get the number of physical CPUs (PCPUs)
-        virNodeInfo nodeInfo;
-        if (virNodeGetInfo(conn, &nodeInfo) < 0) {
-            fprintf(stderr, "Error: Unable to get node info\n");
-            free(domains);
-            return;
-        }
-        numPCPUs = nodeInfo.cpus;
-
-        // Count total number of vCPUs across all active domains.
-        for (int i = 0; i < numDomains; i++) {
-            virDomainInfo info;
-            if (virDomainGetInfo(domains[i], &info) == 0) {
-                numVCPUs += info.nrVirtCpu;
-            }
-        }
-
-        // Allocate memory for vCPU and pCPU info structures.
-        vcpus = (vCPUInfo*)malloc(sizeof(vCPUInfo) * numVCPUs);
-        pcpus = (pCPUInfo*)malloc(sizeof(pCPUInfo) * numPCPUs);
-        if (!vcpus || !pcpus) {
-            fprintf(stderr, "Error: Unable to allocate memory for CPU info structures\n");
-            free(domains);
+    // Initialize PCPUs if first time 
+    if (numPCPUs == 0) {
+        numPCPUs = virNodeGetCPUCount(conn, 0);
+        if (numPCPUs < 0) {
+            fprintf(stderr, "Error: Unable to retrieve number of PCPUs\n");
             return;
         }
 
-        // Initialize pCPU info array.
+        // Allocate PCPU array 
+        pcpus = malloc(numPCPUs * sizeof(pCPUInfo));
+        if (!pcpus) {
+            fprintf(stderr, "Error: Memory allocation failed for PCPUs.\n");
+            return;
+        }
+
+        // Initialize PCPU info to default
         for (int i = 0; i < numPCPUs; i++) {
             pcpus[i].pcpuId = i;
             pcpus[i].totalLoad = 0.0;
             pcpus[i].numVcpus = 0;
         }
+    }
 
-        // Initialize vCPU info array by iterating over each domain.
-        int index = 0;
+    // Initialize VCPUS if first time 
+    if (numVCPUs == 0) {
+        // Calculate number of VCPUs across all domains
         for (int i = 0; i < numDomains; i++) {
+            virDomainPtr domain = domains[i];
             virDomainInfo info;
-            if (virDomainGetInfo(domains[i], &info) != 0) {
+
+            if (virDomainGetInfo(domain, &info) != 0) {
+                fprintf(stderr, "Error: Unable to get domain info for domain %d\n", i);
+                continue;
+            }
+            numVCPUs += info.nrVirtCpu;  // Sum the number of vCPUs for this domain
+        }
+
+        // Allocate VCPU array
+        vcpus = malloc(numVCPUs * sizeof(vCPUInfo));
+        if (!vcpus) {
+            fprintf(stderr, "Error: Memory allocation failed for VCPUS.\n");
+            return;
+        }
+
+        // Initialize vCPU info to default
+        int vcpuIndex = 0;
+        for (int i = 0; i < numDomains; i++) {
+            virDomainPtr domain = domains[i];
+            virDomainInfo info;
+
+            if (virDomainGetInfo(domain, &info) != 0) {
                 fprintf(stderr, "Error: Unable to get info for domain %d\n", i);
                 continue;
             }
-            // Iterate through all the domain's VCPUs and initialize values
+
+            // For each vCPU in the current domain, initialize its information
             for (int j = 0; j < info.nrVirtCpu; j++) {
-                vcpus[index].domain = domains[i];
-                vcpus[index].vcpuId = j;
-                vcpus[index].prevTime = 0;
-                vcpus[index].currTime = 0;
-                vcpus[index].utilization = 0.0;
-                // Get the current PCPU pinning for this vCPU.
-                unsigned char cpumap[VIR_CPU_MAPLEN(numPCPUs)]; // Each bit represents if the VCPU is allowed to run on a particular PCPU
+                vcpus[vcpuIndex].domain = domain;
+                vcpus[vcpuIndex].vcpuId = j;
+                vcpus[vcpuIndex].prevTime = 0;
+                vcpus[vcpuIndex].currTime = 0;
+                vcpus[vcpuIndex].utilization = 0.0;
+                vcpus[vcpuIndex].currentPCPU = -1;
+
+                // Retrieve the current PCPU for the vCPU
+                unsigned char cpumap[VIR_CPU_MAPLEN(numPCPUs)];
                 memset(cpumap, 0, sizeof(cpumap));
-                int ret = virDomainGetVcpuPinInfo(domains[i], j, cpumap, VIR_CPU_MAPLEN(numPCPUs), 0);
+                int ret = virDomainGetVcpuPinInfo(domain, j, cpumap, VIR_CPU_MAPLEN(numPCPUs), 0);
                 if (ret < 0) {
-                    vcpus[index].currentPCPU = 0;
+                    vcpus[vcpuIndex].currentPCPU = 0; // Default Value
                 }
                 else {
-                    // Use the returned cpumap.
+                    // Find the PCPU that the vCPU is currently pinned to
                     for (int k = 0; k < numPCPUs; k++) {
-                        if (cpumap[k / 8] & (1 << (k % 8))) { // Check if the k-th PCPU is allowed for this vCPU
-                            vcpus[index].currentPCPU = k; // Record the default pin
+                        if (cpumap[k / 8] & (1 << (k % 8))) {
+                            vcpus[vcpuIndex].currentPCPU = k;
                             break;
                         }
                     }
                 }
-                index++;
+                vcpuIndex++;
             }
         }
-        initialized = 1;
     }
-
     calcVCPUInformation(vcpus, numVCPUs, interval);
     calcPCPULoad(vcpus, numVCPUs, pcpus, numPCPUs);
     repinVCPUs(vcpus, numVCPUs, pcpus, numPCPUs);
 
+    // Free domain pointers
+    for (int i = 0; i < numDomains; i++) {
+        virDomainFree(domains[i]);
+    }
     free(domains);
 }
 
