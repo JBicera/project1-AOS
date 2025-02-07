@@ -211,7 +211,6 @@ void CPUScheduler(virConnectPtr conn, int interval) // conn = connection object,
     static unsigned int numPCPUs = 0;
 
     virDomainPtr* domains;
-    int numDomains;
 
     // List all domains
     int numDomains = virConnectListAllDomains(conn, &domains,0);
