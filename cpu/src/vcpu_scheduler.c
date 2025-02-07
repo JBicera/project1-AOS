@@ -209,21 +209,20 @@ void CPUScheduler(virConnectPtr conn, int interval) // conn = connection object,
     static pCPUInfo* pcpus = NULL;
     static unsigned int numVCPUs = 0;
     static unsigned int numPCPUs = 0;
-    static int initialized = 0;
 
     virDomainPtr* domains;
     int numDomains;
 
     // List all domains
-    domains = virConnectListAllDomains(conn, VIR_DOMAIN_LIST_ACTIVE, &numDomains);
-    if (domains == NULL || numDomains == 0)
+    int ret = virConnectListAllDomains(conn, &domains);
+    if (ret < 0)
     {
         fprintf(stderr, "Error: Unable to list active domains\n");
         return;
     }
     // Initialize PCPUs if first time 
     if (numPCPUs == 0) {
-        numPCPUs = virNodeGetCPUCount(conn, 0);
+        numPCPUs = virNodeGetCPUStats(conn, 0);
         if (numPCPUs < 0) {
             fprintf(stderr, "Error: Unable to retrieve number of PCPUs\n");
             return;
