@@ -225,12 +225,13 @@ void CPUScheduler(virConnectPtr conn, int interval) // conn = connection object,
     // Do one-time initialization. Essentially recording the default state of the pins and initializing values 
     if (!initialized) {
         // Get the number of physical CPUs (PCPUs)
-        virNodeGetCPUMap(conn, NULL, 0, numPCPUs);
-        if (numPCPUs <= 0) {
-            fprintf(stderr, "Error: Unable to get number of PCPUs\n");
+        virNodeInfo nodeInfo;
+        if (virNodeGetInfo(conn, &node_info) < 0) {
+            fprintf(stderr, "Error: Unable to get node info\n");
             free(domains);
             return;
         }
+        numPCPUs = nodeInfo.cpus;
 
         // Count total number of vCPUs across all active domains.
         for (int i = 0; i < numDomains; i++) {
