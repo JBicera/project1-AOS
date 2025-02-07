@@ -214,7 +214,7 @@ void CPUScheduler(virConnectPtr conn, int interval) // conn = connection object,
     int numDomains;
 
     // List all domains
-    int ret = virConnectListAllDomains(conn, &domains);
+    int ret = virConnectListAllDomains(conn, &domains,0);
     if (ret < 0)
     {
         fprintf(stderr, "Error: Unable to list active domains\n");
@@ -222,11 +222,26 @@ void CPUScheduler(virConnectPtr conn, int interval) // conn = connection object,
     }
     // Initialize PCPUs if first time 
     if (numPCPUs == 0) {
-        numPCPUs = virNodeGetCPUStats(conn, 0);
-        if (numPCPUs < 0) {
-            fprintf(stderr, "Error: Unable to retrieve number of PCPUs\n");
+        int nparams = 0;
+
+        // Retrieve the number of CPU stats parameters
+        if (virNodeGetCPUStats(conn, -1, NULL, &nparams, 0) < 0 || nparams == 0) {
+            fprintf(stderr, "Error: Unable to retrieve number of CPU stats parameters\n");
             return;
         }
+        // Allocate memory for the params array
+        virNodeCPUStatsPtr params = malloc(sizeof(virNodeCPUStats) * nparams);
+        if (!params) {
+            fprintf(stderr, "Error: Memory allocation failed for CPU stats parameters\n");
+            return;
+        }
+        // Retrieve the actual CPU stats
+        if (virNodeGetCPUStats(conn, -1, params, &nparams, 0) < 0) {
+            fprintf(stderr, "Error: Failed to get CPU stats\n");
+            free(params);
+            return;
+        }
+        numPCPUs = nparams;
 
         // Allocate PCPU array 
         pcpus = malloc(numPCPUs * sizeof(pCPUInfo));
@@ -241,6 +256,7 @@ void CPUScheduler(virConnectPtr conn, int interval) // conn = connection object,
             pcpus[i].totalLoad = 0.0;
             pcpus[i].numVcpus = 0;
         }
+        free(params);
     }
 
     // Initialize VCPUS if first time 
