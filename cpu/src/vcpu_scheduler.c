@@ -226,7 +226,7 @@ void CPUScheduler(virConnectPtr conn, int interval) // conn = connection object,
     if (!initialized) {
         // Get the number of physical CPUs (PCPUs)
         virNodeInfo nodeInfo;
-        if (virNodeGetInfo(conn, &node_info) < 0) {
+        if (virNodeGetInfo(conn, &nodeInfo) < 0) {
             fprintf(stderr, "Error: Unable to get node info\n");
             free(domains);
             return;
@@ -275,18 +275,18 @@ void CPUScheduler(virConnectPtr conn, int interval) // conn = connection object,
                 // Get the current PCPU pinning for this vCPU.
                 unsigned char cpumap[VIR_CPU_MAPLEN(numPCPUs)]; // Each bit represents if the VCPU is allowed to run on a particular PCPU
                 memset(cpumap, 0, sizeof(cpumap));
-                if (virDomainGetVcpuPinInfo(domains[i], j, cpumap, VIR_CPU_MAPLEN(numPCPUs), 0) >= 0) {
-                    // Go through all possible PCPUs and choose the first one 
-                    for (int k = 0; k < numPCPUs; k++) {
-                        if (cpumap[k / 8] & (1 << (k % 8))) { // Check if the k-th PCPU is available (pinned) for this VCPU
-                            vcpus[index].currentPCPU = k; // Assign VCPU to valid PCPU
-                            break;
-                        }
-                    }
+                int ret = virDomainGetVcpuPinInfo(domains[i], j, cpumap, VIR_CPU_MAPLEN(numPCPUs), 0);
+                if (ret < 0) {
+                    // If the call fails (No pinning is configured) assume a default cpumap that allows the vCPU to run on all PCPUs.
+                    memset(cpumap, 0xFF, sizeof(cpumap));
                 }
-                else {
-                    fprintf(stderr, "Error: Unable to get pin info for vCPU %d in domain %d\n", j, i);
-                    vcpus[index].currentPCPU = 0; // Default to 0 on error as unable to get VCPU pin info
+
+                // Now choose the first available PCPU from thecpumap.
+                for (int k = 0; k < numPCPUs; k++) {
+                    if (cpumap[k / 8] & (1 << (k % 8))) { // Check if the k-th PCPU is allowed for this vCPU
+                        vcpus[index].currentPCPU = k; // Assign vCPU to this PCPU
+                        break;
+                    }
                 }
                 index++;
             }
