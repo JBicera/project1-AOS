@@ -3,9 +3,6 @@
 Please write your algorithm and logic for the VCPU scheduler in this readme. Include details about how the algorithm is designed and explain how your implementation fulfills the project requirements. Use pseudocode or simple explanations where necessary to make it easy to understand.
 
 Notes:
-virConnectPtr(conn) - Points to connection object representing ocnnection to hypervisor
-virConnectOpen() - Call to open connection to local system's hypervisor using "qemu:///system"
-virConnectClose(conn) - Closes connection to clean up 
 virConnectListAllDomains - Collects a possibly-filtered list of all domains and returns an allocated array of information for each
 	Flags can be used to filter reuslts for smaller targeted domains
 	Modifies array of virDomainPtr objects, each representing a domain
@@ -22,6 +19,7 @@ virDomainGetCPUStats - Retrieves CPU statistics for a domain
 		parms - Pointer to pre-allocated array of virTypedParameter structures to store the statistics
 		nparams: Unsigned int of number of parameters returned
 		flags: Modifies behavior of function
+	Gives cumulative CPU time consumed by domain, CPU time for each indivdual VCPU, CPU time breakdown
 virDomainPinVcpu - Dynamically changes the real CPUs allocated to VCPUs
 	Requires privilged access to hypervisor
 	REturns 0 on success, -1 on failure
@@ -35,6 +33,7 @@ virDomainGetVcpus - Returns array of virVcpuInfo structures
 	unsigned int cpumaplen
 	unsigned char *cpumap = (unsigned char *)malloc(cpumaplen)
 	VIR_COPY_CPUMAP(vcpu_info[vcpu_index].cpumaps, cpumaplen, vcpu_index, cpumap);
+	Use for getting cpumap, number of VCPUs assigned to the domain
 
 
 - Algorithm is independent of number of VCPUs and PCPUs
@@ -55,13 +54,34 @@ Steps/To-Do List
 7. Update the VCPU assignment to its optimal CPU using virDomainPinVcpu
 
 
-VPCU Scheduler Logic:
-- Program is to optimize how VCPUs are assigned to PCPUs
-- First get all the active domains/VMs 
-- Iterate through the VCPU of each domain and collect its statistics
-- Calculate how each is performing and store it to compare globally
-	- This will require being able to store the VCPU ID (ID within its domain), Domain ID, Current PCPU, Cumulative CPU time, Previous CPU time, Utilization %)
-	- Additionally for the PCPUs we need PCPU ID, Load (sum of utilization of all VCPUs of this PCPU), Number of assigned VCPUs
-- Formula for VCPU utilization would be (Time used by VCPU during interval)/ (Total available CPU time during interval) * 100
-- Use helper functions to caculate necessary PCPU and VCPU information
-- My assumption is that 
+What I need
+- Need to every iteration of CPUscheduelr running get VCPU and PCPU information necessary to repin
+- Repin it according to limiting under/overutilization
+- Necessary Information
+	- virDomainPinVcpu Info
+		- Domain pointer to domain of VCPU you want to repin
+		- vcpu index
+		- Total number of PCPUs (Get from virNodeGetCPUMap)
+		- Current cpumap of the VCPU
+	- VCPU Utilization
+		- Use virDomainGetCPUStats to retrieve metrics
+		- Assign to custom struct to keep track for every individual VCPU
+
+
+- Repinning Algorithm
+	- Collect utilizaiton data from VCPUs and PCPUs from defined period
+	- Calculate standrd deviation for each PCPU
+	- Use this to calculate over/underutilized PCPUs
+	- Assign VCPUs not using much CPU time to overutilized PCPUs and vice versa
+		- For each underutilized PCPU: FInd an underutilized VCPU and pin it to that
+		- For each overutilized PCPU: Find VCPU(s) pinned to it that can be repinned to an underutilized PCPU
+	- Ensure sufficient capacity
+
+Pseudocode/Workflow (CPU Scheduler)
+1. Get list of domains(VMs)
+2. Get total number of VCPUs 
+3. Allocate memory for VCPU information array
+4. Retrieve VCPU information from virDomainGetCPUStats() and store in struct
+5. Calculate PCPU utilization using VCPU utilization in each PCPU
+6. Perform repin if there is an overutilized PCPU and underutilized PCPU exceed the standard deviation
+7. Repin using virDomainPinVcpu()
