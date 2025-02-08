@@ -78,7 +78,7 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
     int totalVcpus = 0;
 
     for (int i = 0; i < numDomains; i++) {
-        int numVcpus = virDomainGetVcpus(domain, NULL, 0, NULL, 0);
+        int numVcpus = virDomainGetVcpus(domains, NULL, 0, NULL, 0);
 
         if (numVcpus > 0) {
             totalVcpus += numVcpus;
@@ -123,7 +123,17 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
                 free(vcpuInfoArray);
                 continue;
             }
-            if (virDomainGetCPUStats(domains[i], cpuStats, numVcpus, 0) < 0) 
+            // Get the number of parameters for CPU stats
+            int nparams = 0;
+            if (virDomainGetCPUStats(domains[i], NULL, 0, -1, 1, 0) < 0) {
+                fprintf(stderr, "Error: Failed to get number of CPU stats parameters\n");
+                free(vcpuInfoArray);
+                free(cpuStats);
+                continue;
+            }
+
+            // Get the CPU stats
+            if (virDomainGetCPUStats(domains[i], cpuStats, nparams, 0, numVcpus, 0) < 0)
             {
                 fprintf(stderr, "Error: Failed to get CPU stats for domain %d\n", i);
                 free(vcpuInfoArray);
@@ -137,8 +147,8 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
                 // Initialize prevCpuTime and currCpuTime for the first call
                 if ((*vcpuInfo)[vcpuIndex].prevCpuTime == 0 && (*vcpuInfo)[vcpuIndex].currCpuTime == 0) 
                 {
-                    (*vcpuInfo)[vcpuIndex].prevCpuTime = cpuStats[j]; // Initialize prevCpuTime
-                    (*vcpuInfo)[vcpuIndex].currCpuTime = cpuStats[j]; // Initialize currCpuTime
+                    (*vcpuInfo)[vcpuIndex].prevCpuTime = cpuStats[j].value.ui64; // Initialize prevCpuTime
+                    (*vcpuInfo)[vcpuIndex].currCpuTime = cpuStats[j].value.ui64; // Initialize currCpuTime
                     (*vcpuInfo)[vcpuIndex].vcpuID = vcpuInfoArray[j].number;
                     (*vcpuInfo)[vcpuIndex].domain = domains[i];
                 }
@@ -146,7 +156,7 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
                 {
                     // On subsequent calls, update prevCpuTime and currCpuTime
                     (*vcpuInfo)[vcpuIndex].prevCpuTime = (*vcpuInfo)[vcpuIndex].currCpuTime; // Update prevCpuTime
-                    (*vcpuInfo)[vcpuIndex].currCpuTime = cpuStats[j]; // Update currCpuTime with the new CPU stats
+                    (*vcpuInfo)[vcpuIndex].currCpuTime = cpuStats[j].value.ui64; // Update currCpuTime with the new CPU stats
                 }
                 (*vcpuInfo)[vcpuIndex].currentPcpu = vcpuInfoArray[j].cpu;
 
