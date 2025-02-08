@@ -78,10 +78,9 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
     int totalVcpus = 0;
 
     for (int i = 0; i < numDomains; i++) {
-        virVcpuInfoPtr vcpuInfoArray = NULL;
 
         // First, get the number of VCPUs
-        int numVcpus = virDomainGetVcpus(domains[i], vcpuInfoArray, 0, NULL, 0);
+        int numVcpus = virDomainGetVcpus(domains[i], 0, 0, 0, 0);
         if (numVcpus < 0) {
             fprintf(stderr, "Error: Failed to get VCPU count for domain %d\n", i);
             continue;
@@ -106,7 +105,7 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
     int vcpuIndex = 0;
     for (int i = 0; i < numDomains; i++) {
         // Get the number of VCPUs for this domain
-        int numVcpus = virDomainGetVcpus(domains[i], NULL, 0, NULL, 0);
+        int numVcpus = virDomainGetVcpus(domains[i], 0, 0, 0, 0);
         if (numVcpus < 0) {
             fprintf(stderr, "Error: Failed to get VCPU count for domain %d\n", i);
             continue;
