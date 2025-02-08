@@ -78,7 +78,7 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
     int totalVcpus = 0;
 
     for (int i = 0; i < numDomains; i++) {
-        int numVcpus = virDomainGetVcpus(domains[i], NULL, 0);
+        int numVcpus = virDomainGetVcpus(domain, NULL, 0, NULL, 0);
 
         if (numVcpus > 0) {
             totalVcpus += numVcpus;
@@ -99,7 +99,7 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
     int vcpuIndex = 0;
     for (int i = 0; i < numDomains; i++) 
     {
-        int numVcpus = virDomainGetVcpus(domains[i], NULL, 0);
+        int numVcpus = virDomainGetVcpus(domain, NULL, 0, NULL, 0);
         if (numVcpus > 0) 
         {
             virVcpuInfoPtr vcpuInfoArray = (virVcpuInfoPtr)malloc(numVcpus * sizeof(virVcpuInfo));
@@ -108,7 +108,7 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
                 fprintf(stderr, "Error: Failed to allocate memory for vcpuInfoArray\n");
                 continue;
             }
-            if (virDomainGetVcpus(domains[i], vcpuInfoArray, numVcpus) < 0) 
+            if (virDomainGetVcpus(domains[i], vcpuInfoArray, numVcpus, NULL,0) < 0) 
             {
                 fprintf(stderr, "Error: Failed to get VCPU info for domain %d\n", i);
                 free(vcpuInfoArray);
