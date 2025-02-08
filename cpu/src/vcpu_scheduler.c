@@ -30,6 +30,7 @@ typedef struct {
     int currentPcpu; // The current physical CPU the VCPU is pinned to
     unsigned long long prevCpuTime;  // Previous CPU time for utilization calculation
     unsigned long long currCpuTime;  // Current CPU time for utilization calculation
+    double utilization;
 } VcpuInfo;
 
 /*
@@ -75,16 +76,16 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
 {
     // First, loop through all domains to count total VCPUs
     int totalVcpus = 0;
-    for (int i = 0; i < numDomains; i++) 
-    {
-        int numVcpus = 0;
-        if (virDomainGetVcpus(domains[i], NULL, 0) > 0) 
-        {
-            numVcpus = virDomainGetVcpus(domains[i], NULL, 0);
-        }
 
-        totalVcpus += numVcpus;
+    for (int i = 0; i < numDomains; i++) {
+        virVcpuInfoPtr vcpuInfoArray = NULL;
+        int numVcpus = virDomainGetVcpus(domains[i], vcpuInfoArray, 0);
+
+        if (numVcpus > 0) {
+            totalVcpus += numVcpus;
+        }
     }
+
     if (totalVcpus == 0) return 0;
 
     // Allocate vcpuInfo
@@ -116,7 +117,7 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
             }
 
             // Use virDomainGetCPUStats to get the current array of CPU stats for current domain
-            unsigned long long* cpuStats = (unsigned long long*)malloc(numVcpus * sizeof(unsigned long long));
+            virTypedParameterPtr cpuStats = calloc(numVcpus, sizeof(virTypedParameter));
             if (!cpuStats) 
             {
                 fprintf(stderr, "Error: Failed to allocate memory for CPU stats\n");
@@ -263,14 +264,13 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
 
 void CPUScheduler(virConnectPtr conn, int interval)
 {
-    static int numVCPUs = 0;
     virDomainPtr* domains;
     int numDomains = 0;
     VcpuInfo* vcpuInfo = NULL;
     int totalVcpus = 0;
 
     // List all active domains
-    domains = virConnectListAllDomains(conn, VIR_DOMAIN_LIST_ACTIVE);
+    numDomains = virConnectListAllDomains(conn,&domains, VIR_CONNECT_LIST_DOMAINS_ACTIVE);
     if (domains == NULL) {
         fprintf(stderr, "Failed to list domains\n");
         return;
@@ -281,7 +281,7 @@ void CPUScheduler(virConnectPtr conn, int interval)
     }
 
     // Get VCPU information
-    totalVcpus = getVcpuInfo(domains, numDomains, vcpuInfo); 
+    totalVcpus = getVcpuInfo(domains, numDomains, &vcpuInfo); 
     
     // Run the repinning algorithm.
     repinVcpus(conn, vcpuInfo, totalVcpus, interval, 0.1);
