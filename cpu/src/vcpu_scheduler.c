@@ -78,7 +78,7 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
     int totalVcpus = 0;
 
     for (int i = 0; i < numDomains; i++) {
-        totalVcpus += = virDomainGetVcpus(domains[i], NULL, 0, NULL, 0);
+        totalVcpus += virDomainGetVcpus(domains[i], NULL, 0, NULL, 0);
     }
 
     if (totalVcpus == 0) return 0;
