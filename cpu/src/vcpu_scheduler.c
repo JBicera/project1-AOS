@@ -99,7 +99,7 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
     int vcpuIndex = 0;
     for (int i = 0; i < numDomains; i++) 
     {
-        int numVcpus = virDomainGetVcpus(domain, NULL, 0, NULL, 0);
+        int numVcpus = virDomainGetVcpus(domains, NULL, 0, NULL, 0);
         if (numVcpus > 0) 
         {
             virVcpuInfoPtr vcpuInfoArray = (virVcpuInfoPtr)malloc(numVcpus * sizeof(virVcpuInfo));
@@ -236,7 +236,7 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
         for (int i = 0; i < totalVcpus; i++) {
             if (vcpuInfo[i].currentPcpu == maxPcpu && vcpuInfo[i].utilization > avgUtil[maxPcpu]) {
                 // Attempt to repin the VCPU to the min-loaded PCPU.
-                int ret = virDomainPinVcpu(vcpuInfo[i].domain, vcpuInfo[i].vcpuID, cpumap, cpumapLen, 0);
+                int ret = virDomainPinVcpu(vcpuInfo[i].domain, vcpuInfo[i].vcpuID, cpumap, cpumapLen);
 
                 if (ret < 0) {
                     fprintf(stderr, "Error: Failed to repin VCPU %d in its domain\n", vcpuInfo[i].vcpuID);
