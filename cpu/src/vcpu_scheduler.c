@@ -77,105 +77,110 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
     // First, loop through all domains to count total VCPUs
     int totalVcpus = 0;
 
+    // Calculate total VCPUs
     for (int i = 0; i < numDomains; i++) {
-        virVcpuInfoPtr vcpuInfoArray = NULL;
-        int numVcpus = virDomainGetVcpus(domains[i], vcpuInfoArray, 0, NULL, 0);
-        // Check for errors in retrieving the number of VCPUs
-        if (numVcpus < 0) {
-            fprintf(stderr, "Error: Failed to get VCPU count for domain %d\n", i);
+        // Allocate a single VcpuInfo structure to pass to virDomainGetVcpus
+        virVcpuInfoPtr vcpuInfoArray = (virVcpuInfoPtr)malloc(sizeof(virVcpuInfo));
+        if (!vcpuInfoArray) {
+            fprintf(stderr, "Error: Memory allocation for vcpuInfoArray failed\n");
             continue;
         }
+
+        // Now call virDomainGetVcpus to get the VCPU count
+        int numVcpus = virDomainGetVcpus(domains[i], vcpuInfoArray, 0, NULL, 0);
+        if (numVcpus < 0) {
+            fprintf(stderr, "Error: Failed to get VCPU count for domain %d\n", i);
+            free(vcpuInfoArray);
+            continue;
+        }
+
         totalVcpus += numVcpus;
+        free(vcpuInfoArray); // Free the allocated memory for this domain
     }
 
-    if (totalVcpus == 0) return 0;
-
-    // Allocate vcpuInfo
-    *vcpuInfo = (VcpuInfo*)calloc(totalVcpus, sizeof(VcpuInfo));
-    if (!*vcpuInfo) {
-        fprintf(stderr, "Error: Memory allocation failed\n");
+    if (totalVcpus == 0) {
+        fprintf(stderr, "No VCPUs found for any domains.\n");
         return 0;
     }
 
+    // Allocate memory for the vcpuInfo array to store data
+    *vcpuInfo = (VcpuInfo*)calloc(totalVcpus, sizeof(VcpuInfo));
+    if (!*vcpuInfo) {
+        fprintf(stderr, "Error: Memory allocation for VcpuInfo failed\n");
+        return 0;
+    }
 
     // Now iterate through domains to collect VCPU utilization data
     int vcpuIndex = 0;
-    for (int i = 0; i < numDomains; i++) 
-    {
-        int numVcpus = virDomainGetVcpus(domains[i], NULL, 0, NULL, 0);
-        if (numVcpus > 0) 
-        {
-            virVcpuInfoPtr vcpuInfoArray = (virVcpuInfoPtr)malloc(numVcpus * sizeof(virVcpuInfo));
-            if (!vcpuInfoArray) 
-            {
-                fprintf(stderr, "Error: Failed to allocate memory for vcpuInfoArray\n");
-                continue;
-            }
-            if (virDomainGetVcpus(domains[i], vcpuInfoArray, numVcpus, NULL,0) < 0) 
-            {
-                fprintf(stderr, "Error: Failed to get VCPU info for domain %d\n", i);
-                free(vcpuInfoArray);
-                continue;
-            }
+    for (int i = 0; i < numDomains; i++) {
+        // Allocate the appropriate amount of memory to hold VCPU info for this domain
+        virVcpuInfoPtr vcpuInfoArray = (virVcpuInfoPtr)malloc(sizeof(virVcpuInfo) * totalVcpus);
+        if (!vcpuInfoArray) {
+            fprintf(stderr, "Error: Failed to allocate memory for vcpuInfoArray\n");
+            continue;
+        }
 
-            // Use virDomainGetCPUStats to get the current array of CPU stats for current domain
-            virTypedParameterPtr cpuStats = malloc(sizeof(virTypedParameter) * numVcpus);
-            if (!cpuStats) 
-            {
-                fprintf(stderr, "Error: Failed to allocate memory for CPU stats\n");
-                free(vcpuInfoArray);
-                continue;
-            }
-            // Get the number of parameters for CPU stats
-            int nparams = 0;
-            if (virDomainGetCPUStats(domains[i], NULL, 0, -1, 1, 0) < 0) {
-                fprintf(stderr, "Error: Failed to get number of CPU stats parameters\n");
-                free(vcpuInfoArray);
-                free(cpuStats);
-                continue;
-            }
+        // Get the number of VCPUs for this domain
+        int numVcpus = virDomainGetVcpus(domains[i], vcpuInfoArray, totalVcpus, NULL, 0);
+        if (numVcpus < 0) {
+            fprintf(stderr, "Error: Failed to get VCPU info for domain %d\n", i);
+            free(vcpuInfoArray);
+            continue;
+        }
 
-            // Get the CPU stats
-            if (virDomainGetCPUStats(domains[i], cpuStats, nparams, 0, numVcpus, 0) < 0)
-            {
-                fprintf(stderr, "Error: Failed to get CPU stats for domain %d\n", i);
-                free(vcpuInfoArray);
-                free(cpuStats);
-                continue;
-            }
+        // Retrieve CPU stats for this domain
+        virTypedParameterPtr cpuStats = malloc(sizeof(virTypedParameter) * numVcpus);
+        if (!cpuStats) {
+            fprintf(stderr, "Error: Failed to allocate memory for CPU stats\n");
+            free(vcpuInfoArray);
+            continue;
+        }
 
-            // Populate the VcpuInfo array with data for each VCPU in the domain
-            for (int j = 0; j < numVcpus; j++)
-            {
-                // Initialize prevCpuTime and currCpuTime for the first call
-                if ((*vcpuInfo)[vcpuIndex].prevCpuTime == 0 && (*vcpuInfo)[vcpuIndex].currCpuTime == 0) 
-                {
-                    (*vcpuInfo)[vcpuIndex].prevCpuTime = vcpuInfoArray[j].cpuTime; // Initialize prevCpuTime
-                    (*vcpuInfo)[vcpuIndex].currCpuTime = vcpuInfoArray[j].cpuTime; // Initialize currCpuTime
-                    (*vcpuInfo)[vcpuIndex].vcpuID = vcpuInfoArray[j].number;
-                    (*vcpuInfo)[vcpuIndex].domain = domains[i];
-                }
-                else 
-                {
-                    // On subsequent calls, update prevCpuTime and currCpuTime
-                    (*vcpuInfo)[vcpuIndex].prevCpuTime = (*vcpuInfo)[vcpuIndex].currCpuTime; // Update prevCpuTime
-                    (*vcpuInfo)[vcpuIndex].currCpuTime = vcpuInfoArray[j].cpuTime;; // Update currCpuTime with the new CPU stats
-                }
-                (*vcpuInfo)[vcpuIndex].currentPcpu = vcpuInfoArray[j].cpu;
-
-                // Move to the next index in the vcpuInfo array
-                vcpuIndex++;
-            }
-
-            // Free the temporary arrays
+        // Get the number of parameters for CPU stats
+        int nparams = 0;
+        if (virDomainGetCPUStats(domains[i], NULL, 0, -1, 1, 0) < 0) {
+            fprintf(stderr, "Error: Failed to get number of CPU stats parameters\n");
             free(vcpuInfoArray);
             free(cpuStats);
+            continue;
         }
-    }
-    
-    return totalVcpus;
 
+        // Get the CPU stats for the domain
+        if (virDomainGetCPUStats(domains[i], cpuStats, nparams, 0, numVcpus, 0) < 0) {
+            fprintf(stderr, "Error: Failed to get CPU stats for domain %d\n", i);
+            free(vcpuInfoArray);
+            free(cpuStats);
+            continue;
+        }
+
+        // Populate the VcpuInfo array with data for each VCPU in the domain
+        for (int j = 0; j < numVcpus; j++) {
+            // Initialize prevCpuTime and currCpuTime for the first call
+            if ((*vcpuInfo)[vcpuIndex].prevCpuTime == 0 && (*vcpuInfo)[vcpuIndex].currCpuTime == 0) {
+                (*vcpuInfo)[vcpuIndex].prevCpuTime = cpuStats[j].value.ui64; // Initialize prevCpuTime
+                (*vcpuInfo)[vcpuIndex].currCpuTime = cpuStats[j].value.ui64; // Initialize currCpuTime
+                (*vcpuInfo)[vcpuIndex].vcpuID = vcpuInfoArray[j].number;
+                (*vcpuInfo)[vcpuIndex].domain = domains[i];
+            }
+            else {
+                // On subsequent calls, update prevCpuTime and currCpuTime
+                (*vcpuInfo)[vcpuIndex].prevCpuTime = (*vcpuInfo)[vcpuIndex].currCpuTime; // Update prevCpuTime
+                (*vcpuInfo)[vcpuIndex].currCpuTime = cpuStats[j].value.ui64; // Update currCpuTime
+            }
+            (*vcpuInfo)[vcpuIndex].currentPcpu = vcpuInfoArray[j].cpu;
+
+            // Move to the next index in the vcpuInfo array
+            vcpuIndex++;
+        }
+
+        // Free the temporary arrays
+        free(vcpuInfoArray);
+        free(cpuStats);
+    }
+
+    return totalVcpus;
 }
+
 // Helper function to get the number of physical CPUs.
 int getNumPcpus(virConnectPtr conn) {
     virNodeInfo nodeInfo;
