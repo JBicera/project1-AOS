@@ -187,6 +187,7 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
     // Utilization = ((currCpuTime - prevCpuTime) / interval) * 100.0
     for (int i = 0; i < totalVcpus; i++) {
         // Calculate utilization as a percentage
+        printf("Current: %llu Prev: %llu", vcpuInfo[i].currCpuTime, vcpuInfo[i].prevCpuTime);
         double util = ((double)(vcpuInfo[i].currCpuTime - vcpuInfo[i].prevCpuTime) / (double)(interval)) * 100.0;
         vcpuInfo[i].utilization = util;
         printf("UTIL: %f\n", util);
