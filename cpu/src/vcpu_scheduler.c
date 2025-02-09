@@ -297,6 +297,8 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
                 free(avgUtil);
                 return;
             }
+            // Set the bit corresponding to the min-loaded PCPU
+            cpumap[minPcpu / 8] |= (1 << (minPcpu % 8));
 
             // Find the least utilized VCPU on the max-loaded PCPU
             int leastUtilizedVcpu = -1;
