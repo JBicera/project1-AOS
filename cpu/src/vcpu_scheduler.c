@@ -152,7 +152,6 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains)
                 vcpuInfo[vcpuIndex].prevCpuTime = vcpuInfoArray[j].cpuTime;
                 vcpuInfo[vcpuIndex].currCpuTime = vcpuInfoArray[j].cpuTime;
                 vcpuInfo[vcpuIndex].vcpuID = j;
-                vcpuInfo[vcpuIndex].domain = domains[i];
             }
             else {
                 vcpuInfo[vcpuIndex].prevCpuTime = vcpuInfo[vcpuIndex].currCpuTime;
@@ -160,6 +159,7 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains)
             }
 
             vcpuInfo[vcpuIndex].currentPcpu = vcpuInfoArray[j].cpu;
+            vcpuInfo[vcpuIndex].domain = domains[i];
             vcpuIndex++;
         }
 
@@ -216,7 +216,6 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
             avgUtil[i] = totalUtil[i] / count[i]; // Compute the average utilization
         else
             avgUtil[i] = 0; // If no VCPUs are assigned, set utilization to zero
-        printf("PCPU[%d]: Total Util = %.2f, Count = %d\n", i, totalUtil[i], count[i]);
     }
 
     // Debug: Print per-PCPU average utilizations
