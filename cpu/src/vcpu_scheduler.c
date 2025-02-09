@@ -74,25 +74,17 @@ int main(int argc, char* argv[])
 // Helper Function: Get PCPU information and return total PCPUs
 int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
 {
-    // First, loop through all domains to count total VCPUs
+    // Get total VCPUs in system
     int totalVcpus = 0;
-
+    virDomainInfo info;
     for (int i = 0; i < numDomains; i++) {
-
-        // First, get the number of VCPUs
-        int numVcpus = virDomainGetVcpus(domains[i], 0, 0, 0, 0);
-        if (numVcpus < 0) {
-            fprintf(stderr, "Error: Failed to get VCPU count for domain %d\n", i);
+        if (virDomainGetInfo(domains[i], &info) < 0) {
+            fprintf(stderr, "Failed to get domain info\n");
             continue;
         }
-
-        totalVcpus += numVcpus;
+        totalVcpus += info.nrVirtCpu;
     }
 
-    if (totalVcpus == 0) {
-        fprintf(stderr, "No VCPUs found for any domains.\n");
-        return 0;
-    }
 
     // Allocate memory for vcpuInfo to store details for each VCPU
     *vcpuInfo = (VcpuInfo*)calloc(totalVcpus, sizeof(VcpuInfo));
@@ -105,11 +97,11 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
     int vcpuIndex = 0;
     for (int i = 0; i < numDomains; i++) {
         // Get the number of VCPUs for this domain
-        int numVcpus = virDomainGetVcpus(domains[i], 0, 0, 0, 0);
-        if (numVcpus < 0) {
-            fprintf(stderr, "Error: Failed to get VCPU count for domain %d\n", i);
+        if (virDomainGetInfo(domains[i], &info) < 0) {
+            fprintf(stderr, "Failed to get domain info\n");
             continue;
         }
+        int numVcpus = info.nrVirtCpu;
 
         // Allocate memory to store VCPU info for this domain
         virVcpuInfoPtr vcpuInfoArray = (virVcpuInfoPtr)malloc(sizeof(virVcpuInfo) * numVcpus);
@@ -276,14 +268,14 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
 
 void CPUScheduler(virConnectPtr conn, int interval)
 {
-    virDomainPtr* domains;
+    virDomainPtr* domains = NULL;
     int numDomains = 0;
     VcpuInfo* vcpuInfo = NULL;
     int totalVcpus = 0;
 
     // List all active domains
     numDomains = virConnectListAllDomains(conn,&domains, VIR_CONNECT_LIST_DOMAINS_ACTIVE);
-    if (domains == NULL) {
+    if (numDomains < 0 || domains == NULL) {
         fprintf(stderr, "Failed to list domains\n");
         return;
     }
