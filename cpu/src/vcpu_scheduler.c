@@ -209,8 +209,8 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
         }
     }
 
-    // Debug: Print per-PCPU average utilizations
-    printf("PCPU average utilizations:\n");
+    // Debug: Print per-PCPU total utilizations
+    printf("PCPU total utilizations:\n");
     for (int i = 0; i < numPcpus; i++) {
         printf("PCPU %d: %.2f%% (with %d VCPUs)\n", i, totalUtil[i], count[i]);
     }
