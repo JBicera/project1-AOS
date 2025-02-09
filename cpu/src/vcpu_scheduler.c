@@ -103,8 +103,6 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
         }
         int numVcpus = info.nrVirtCpu;
 
-        printf("Number of VCPUs: %d for domain: %d", numVcpus, i);
-
         // Allocate memory to store VCPU info for this domain
         virVcpuInfoPtr vcpuInfoArray = (virVcpuInfoPtr)malloc(sizeof(virVcpuInfo) * numVcpus);
         if (!vcpuInfoArray) {
@@ -160,9 +158,6 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
             }
 
             (*vcpuInfo)[vcpuIndex].currentPcpu = vcpuInfoArray[j].cpu;
-            // Debug Print: Show collected vCPU information
-            printf("VCPU[%d] (Domain: %d) -> PCPU: %d, Prev Time: %llu, Curr Time: %llu\n",
-                (*vcpuInfo)[vcpuIndex].vcpuID, i, (*vcpuInfo)[vcpuIndex].currentPcpu, (*vcpuInfo)[vcpuIndex].prevCpuTime, (*vcpuInfo)[vcpuIndex].currCpuTime);
             // Move to the next index in the vcpuInfo array
             vcpuIndex++;
         }
@@ -171,6 +166,7 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
         free(vcpuInfoArray);
         free(cpuStats);
     }
+    printf("TOTAL VCPUS: %d", totalVcpus);
 
     return totalVcpus;
 }
