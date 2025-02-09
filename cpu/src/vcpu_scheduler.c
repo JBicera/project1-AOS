@@ -144,7 +144,8 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
         // Populate the VcpuInfo array with VCPU stats data for each VCPU in the domain
         for (int j = 0; j < numVcpus; j++) {
             // Initialize prevCpuTime and currCpuTime for the first call
-            if ((*vcpuInfo)[vcpuIndex].prevCpuTime == 0 && (*vcpuInfo)[vcpuIndex].currCpuTime == 0) {
+            if ((*vcpuInfo)[vcpuIndex].prevCpuTime == 0 && (*vcpuInfo)[vcpuIndex].currCpuTime == 0) // If not initialized
+            { 
                 (*vcpuInfo)[vcpuIndex].prevCpuTime = vcpuInfoArray[j].cpuTime; // Initialize prevCpuTime
                 (*vcpuInfo)[vcpuIndex].currCpuTime = vcpuInfoArray[j].cpuTime; // Initialize currCpuTime
                 (*vcpuInfo)[vcpuIndex].vcpuID = vcpuInfoArray[j].number;
@@ -215,6 +216,11 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
             avgUtil[i] = 0; // If no VCPUs are assigned, set utilization to zero
     }
 
+    // Debug: Print per-PCPU average utilizations
+    printf("PCPU average utilizations:\n");
+    for (int i = 0; i < numPcpus; i++) {
+        printf("PCPU %d: %.2f%% (with %d VCPUs)\n", i, avgUtil[i], count[i]);
+    }
 
     // Identify the max-loaded and min-loaded PCPUs
     int maxPcpu = 0, minPcpu = 0;
@@ -225,11 +231,14 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
             minPcpu = i;
     }
 
-    // Check if the difference exceeds the threshold.
-    if (avgUtil[maxPcpu] - avgUtil[minPcpu] > threshold) {
-        // Calculate cpumap length in bytes.
+    printf("Max-loaded PCPU: %d (avg utilization: %.2f%%), Min-loaded PCPU: %d (avg utilization: %.2f%%)\n",
+        maxPcpu, avgUtil[maxPcpu], minPcpu, avgUtil[minPcpu]);
+
+    // Check if the difference exceeds the threshold
+    if (avgUtil[maxPcpu] - avgUtil[minPcpu] >= threshold) {
+        // Calculate cpumap length in bytes
         unsigned int cpumapLen = (numPcpus + 7) / 8;
-        // Allocate and zero out cpumap.
+        // Allocate and zero out cpumap
         unsigned char* cpumap = (unsigned char*)calloc(cpumapLen, sizeof(unsigned char));
         if (!cpumap) {
             fprintf(stderr, "Error allocating cpumap\n");
