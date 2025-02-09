@@ -300,6 +300,4 @@ void CPUScheduler(virConnectPtr conn, int interval)
     // Run the repinning algorithm.
     repinVcpus(conn, vcpuInfo, totalVcpus, interval, 0.1);
 
-    free(vcpuInfo);
-    free(domains);
 }
