@@ -117,24 +117,24 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
             continue;
         }
 
-        // Get the CPU stats for the domain
-        virTypedParameterPtr cpuStats = malloc(sizeof(virTypedParameter) * numVcpus);
+        // Get available statistics number
+        int nparams = virDomainGetCPUStats(domains[i], NULL, 0, -1, 1, 0);
+        if (nparams < 0) {
+            fprintf(stderr, "Error: Failed to get number of CPU stats parameters\n");
+            free(vcpuInfoArray);
+            continue;
+        }
+
+        // Allocate the CPU stats array for the domain
+        virTypedParameterPtr cpuStats = malloc(sizeof(virTypedParameter) * nparams);
         if (!cpuStats) {
             fprintf(stderr, "Error: Memory allocation failed for CPU stats\n");
             free(vcpuInfoArray);
             continue;
         }
 
-        int nparams = 0;
-        if (virDomainGetCPUStats(domains[i], NULL, 0, -1, 1, 0) < 0) {
-            fprintf(stderr, "Error: Failed to get number of CPU stats parameters\n");
-            free(vcpuInfoArray);
-            free(cpuStats);
-            continue;
-        }
-
         // Retrieve CPU stats for the domain
-        if (virDomainGetCPUStats(domains[i], cpuStats, nparams, 0, numVcpus, 0) < 0) {
+        if (virDomainGetCPUStats(domains[i], cpuStats, nparams, -1, 1, 0) < 0) {
             fprintf(stderr, "Error: Failed to get CPU stats for domain %d\n", i);
             free(vcpuInfoArray);
             free(cpuStats);
