@@ -216,31 +216,32 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
     }
 
     // Identify the most loaded and least loaded PCPUs
-    int mostPcpu = 0, leastPcpu = 0;
+    int maxPcpu = 0, minPcpu = 0;
     for (int i = 1; i < numPcpus; i++) {
-        if (totalUtil[i] > totalUtil[mostPcpu])
-            mostPcpu = i;
-        if (totalUtil[i] < totalUtil[leastPcpu])
-            leastPcpu = i;
+        if (totalUtil[i] > totalUtil[maxPcpu])
+            maxPcpu = i;
+        if (totalUtil[i] < totalUtil[minPcpu])
+            minPcpu = i;
     }
     printf("Most loaded PCPU: %d (total: %.2f%%), Least loaded PCPU: %d (total: %.2f%%)\n",
-        mostPcpu, totalUtil[mostPcpu], leastPcpu, totalUtil[leastPcpu]);
+        maxPcpu, totalUtil[maxPcpu], minPcpu, totalUtil[minPcpu]);
 
-    if (totalUtil[mostPcpu] - totalUtil[leastPcpu] > threshold) 
+    if (totalUtil[maxPcpu] - totalUtil[minPcpu] > threshold) 
     {
-        int candidate = -1;
+        int minVcpu = -1;
         double lowestVcpuUtil = 100.0;
 
         // For each VCPU on the most loaded PCPU:
         for (int i = 0; i < totalVcpus; i++) {
-            if (vcpuInfo[i].currentPcpu == mostPcpu || vcpuInfo[i].utilization < lowestVcpuUtil)
+            if (vcpuInfo[i].currentPcpu == maxPcpu || vcpuInfo[i].utilization < lowestVcpuUtil)
             {
                 lowestVcpuUtil = vcpuInfo[i].utilization;
-                candidate = i;
+                minVcpu = i;
             }
         }
 
-        if (candidate != -1) {
+        if (minVcpu != -1) 
+        {
 
             // Prepare cpumap that allows only the least loaded PCPU
             unsigned int cpumapLen = (numPcpus + 7) / 8;
@@ -251,17 +252,17 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
                 free(count);
                 return;
             }
-            cpumap[leastPcpu / 8] |= (1 << (leastPcpu % 8));
+            cpumap[minPcpu / 8] |= (1 << (minPcpu % 8));
 
-            int ret = virDomainPinVcpu(vcpuInfo[candidate].domain, vcpuInfo[candidate].vcpuID, cpumap, cpumapLen);
-            if (ret < 0) {
+            int val = virDomainPinVcpu(vcpuInfo[minVcpu].domain, vcpuInfo[minVcpu].vcpuID, cpumap, cpumapLen);
+            if (val < 0) {
                 fprintf(stderr, "Error: Failed to repin VCPU %d from PCPU %d to PCPU %d\n",
-                    vcpuInfo[candidate].vcpuID, mostPcpu, leastPcpu);
+                    vcpuInfo[minVcpu].vcpuID, maxPcpu, minPcpu);
             }
             else {
                 printf("Repinned VCPU %d from PCPU %d to PCPU %d (Utilization: %.2f%%)\n",
-                    vcpuInfo[candidate].vcpuID, mostPcpu, leastPcpu, vcpuInfo[candidate].utilization);
-                vcpuInfo[candidate].currentPcpu = leastPcpu;  // Update the mapping
+                    vcpuInfo[minVcpu].vcpuID, maxPcpu, minPcpu, vcpuInfo[minVcpu].utilization);
+                vcpuInfo[minVcpu].currentPcpu = minPcpu;  // Update the mapping
             }
             free(cpumap);
         }
@@ -301,6 +302,6 @@ void CPUScheduler(virConnectPtr conn, int interval)
     totalVcpus = getVcpuInfo(domains, numDomains); 
     
     // Run the repinning algorithm.
-    repinVcpus(conn, vcpuInfo, totalVcpus, interval, 0.1);
+    repinVcpus(conn, vcpuInfo, totalVcpus, interval, 10);
 
 }
