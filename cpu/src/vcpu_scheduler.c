@@ -187,7 +187,7 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
     // Calculate utilization for each VCPU (percentage)
     // Utilization = ((currCpuTime - prevCpuTime) / interval) * 100.0
     for (int i = 0; i < totalVcpus; i++) {
-        double util = ((double)(vcpuInfo[i].currCpuTime - vcpuInfo[i].prevCpuTime) / (double)interval) * 100.0;
+        double util = (((double)(vcpuInfo[i].currCpuTime - vcpuInfo[i].prevCpuTime)/ 1e9) / (double)interval) * 100.0;
         vcpuInfo[i].utilization = util;
     }
 
