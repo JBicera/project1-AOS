@@ -218,9 +218,9 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
     // Identify the most loaded and least loaded PCPUs
     int mostPcpu = 0, leastPcpu = 0;
     for (int i = 1; i < numPcpus; i++) {
-        if (avgUtil[i] > avgUtil[mostPcpu])
+        if (totalUtil[i] > totalUtil[mostPcpu])
             mostPcpu = i;
-        if (avgUtil[i] < avgUtil[leastPcpu])
+        if (totalUtil[i] < totalUtil[leastPcpu])
             leastPcpu = i;
     }
     printf("Most loaded PCPU: %d (avg: %.2f%%), Least loaded PCPU: %d (total: %.2f%%)\n",
@@ -249,7 +249,6 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
                 fprintf(stderr, "Error allocating cpumap\n");
                 free(totalUtil);
                 free(count);
-                free(avgUtil);
                 return;
             }
             cpumap[leastPcpu / 8] |= (1 << (leastPcpu % 8));
@@ -276,7 +275,6 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
 
     free(totalUtil);
     free(count);
-    free(avgUtil);
 }
 
 
