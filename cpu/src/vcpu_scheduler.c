@@ -183,122 +183,126 @@ int getNumPcpus(virConnectPtr conn) {
 }
 
 // Helper function to repin CPUs if the usage difference is beyond a certain threshold
-void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int interval, double threshold)
-{
+void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int interval, double threshold) {
     // Calculate utilization for each VCPU (percentage)
-    for (int i = 0; i < totalVcpus; i++)
-    {
-        // Calculate utilization as a percentage
+    // Utilization = ((currCpuTime - prevCpuTime) / (interval * 1e9)) * 100.0
+    for (int i = 0; i < totalVcpus; i++) {
         double util = ((double)(vcpuInfo[i].currCpuTime - vcpuInfo[i].prevCpuTime) / (double)(interval * 1e9)) * 100.0;
         vcpuInfo[i].utilization = util;
     }
 
     // Get number of PCPUs
     int numPcpus = getNumPcpus(conn);
-    if (numPcpus <= 0)
-    {
+    if (numPcpus <= 0) {
         fprintf(stderr, "Error: No physical CPUs found.\n");
         return;
     }
 
-    // Aggregate average utilization per PCPU
+    // Aggregate total utilization and count per PCPU
     double* totalUtil = (double*)calloc(numPcpus, sizeof(double));
     int* count = (int*)calloc(numPcpus, sizeof(int));
-    for (int i = 0; i < totalVcpus; i++)
-    {
+    for (int i = 0; i < totalVcpus; i++) {
         int p = vcpuInfo[i].currentPcpu;
-        if (p >= 0 && p < numPcpus)
-        {
+        if (p >= 0 && p < numPcpus) {
             totalUtil[p] += vcpuInfo[i].utilization;
             count[p]++;
         }
     }
 
+    // Calculate average utilization per PCPU
     double* avgUtil = (double*)calloc(numPcpus, sizeof(double));
-    for (int i = 0; i < numPcpus; i++)
-    {
+    for (int i = 0; i < numPcpus; i++) {
         if (count[i] > 0)
-            avgUtil[i] = totalUtil[i] / count[i]; // Compute the average utilization
+            avgUtil[i] = totalUtil[i] / count[i];
         else
-            avgUtil[i] = 0; // If no VCPUs are assigned, set utilization to zero
+            avgUtil[i] = 0;
     }
 
     // Debug: Print per-PCPU average utilizations
     printf("PCPU average utilizations:\n");
-    for (int i = 0; i < numPcpus; i++)
-    {
+    for (int i = 0; i < numPcpus; i++) {
         printf("PCPU %d: %.2f%% (with %d VCPUs)\n", i, avgUtil[i], count[i]);
     }
 
-    // Identify the max-loaded and min-loaded PCPUs
-    int maxPcpu = 0, minPcpu = 0;
-    for (int i = 1; i < numPcpus; i++)
-    {
-        if (avgUtil[i] > avgUtil[maxPcpu])
-            maxPcpu = i;
-        if (avgUtil[i] < avgUtil[minPcpu])
-            minPcpu = i;
+    // Identify the most loaded and least loaded PCPUs
+    int mostPcpu = 0, leastPcpu = 0;
+    for (int i = 1; i < numPcpus; i++) {
+        if (avgUtil[i] > avgUtil[mostPcpu])
+            mostPcpu = i;
+        if (avgUtil[i] < avgUtil[leastPcpu])
+            leastPcpu = i;
     }
+    printf("Most loaded PCPU: %d (avg: %.2f%%), Least loaded PCPU: %d (avg: %.2f%%)\n",
+        mostPcpu, avgUtil[mostPcpu], leastPcpu, avgUtil[leastPcpu]);
 
-    printf("Max-loaded PCPU: %d (avg utilization: %.2f%%), Min-loaded PCPU: %d (avg utilization: %.2f%%)\n",
-        maxPcpu, avgUtil[maxPcpu], minPcpu, avgUtil[minPcpu]);
+    // Only consider repinning if the difference exceeds the threshold
+    double currentDiff = avgUtil[mostPcpu] - avgUtil[leastPcpu];
+    if (currentDiff >= threshold) {
+        // Now, choose a candidate VCPU from the most loaded PCPU that, when moved to the least loaded PCPU,
+        // will reduce the overall imbalance.
+        int candidate = -1;
+        double bestNewDiff = currentDiff; // Initialize with current difference
 
-    // Check if the difference exceeds the threshold
-    if (avgUtil[maxPcpu] - avgUtil[minPcpu] >= threshold)
-    {
-        // Find the least utilized VCPU on the max-loaded PCPU
-        int leastUtilizedVcpu = -1;
-        double lowestUtil = 100.0; // VCPU utilization can't exceed 100.0%
+        // For each VCPU on the most loaded PCPU:
+        for (int i = 0; i < totalVcpus; i++) {
+            if (vcpuInfo[i].currentPcpu == mostPcpu) {
+                // Simulate removal from mostPcpu:
+                double newSourceTotal = totalUtil[mostPcpu] - vcpuInfo[i].utilization;
+                int newSourceCount = (count[mostPcpu] > 1) ? (count[mostPcpu] - 1) : 1;
+                double newSourceAvg = newSourceTotal / newSourceCount;
 
-        for (int i = 0; i < totalVcpus; i++)
-        {
-            if (vcpuInfo[i].currentPcpu == maxPcpu && vcpuInfo[i].currentPcpu != minPcpu) {
-                if (vcpuInfo[i].utilization < lowestUtil) {
-                    lowestUtil = vcpuInfo[i].utilization;
-                    leastUtilizedVcpu = i;
+                // Simulate addition to leastPcpu:
+                double newTargetTotal = totalUtil[leastPcpu] + vcpuInfo[i].utilization;
+                int newTargetCount = count[leastPcpu] + 1;
+                double newTargetAvg = newTargetTotal / newTargetCount;
+
+                double simulatedDiff = newSourceAvg - newTargetAvg;
+                // Choose candidate if simulated difference is lower than current best
+                if (simulatedDiff < bestNewDiff) {
+                    bestNewDiff = simulatedDiff;
+                    candidate = i;
                 }
             }
         }
 
-        // Repin the least utilized VCPU from max-loaded PCPU to min-loaded PCPU
-        if (leastUtilizedVcpu != -1)
-        {
+        if (candidate != -1) {
+            // Prepare cpumap that allows only the least loaded PCPU
             unsigned int cpumapLen = (numPcpus + 7) / 8;
             unsigned char* cpumap = (unsigned char*)calloc(cpumapLen, sizeof(unsigned char));
-
-            if (!cpumap)
-            {
+            if (!cpumap) {
                 fprintf(stderr, "Error allocating cpumap\n");
                 free(totalUtil);
                 free(count);
                 free(avgUtil);
                 return;
             }
+            cpumap[leastPcpu / 8] |= (1 << (leastPcpu % 8));
 
-            // Set the bit corresponding to the min-loaded PCPU.
-            cpumap[minPcpu / 8] |= (1 << (minPcpu % 8));
-
-            int ret = virDomainPinVcpu(vcpuInfo[leastUtilizedVcpu].domain, vcpuInfo[leastUtilizedVcpu].vcpuID, cpumap, cpumapLen);
-            if (ret < 0)
-            {
+            int ret = virDomainPinVcpu(vcpuInfo[candidate].domain, vcpuInfo[candidate].vcpuID, cpumap, cpumapLen);
+            if (ret < 0) {
                 fprintf(stderr, "Error: Failed to repin VCPU %d from PCPU %d to PCPU %d\n",
-                    vcpuInfo[leastUtilizedVcpu].vcpuID, maxPcpu, minPcpu);
+                    vcpuInfo[candidate].vcpuID, mostPcpu, leastPcpu);
             }
-            else
-            {
+            else {
                 printf("Repinned VCPU %d from PCPU %d to PCPU %d (Utilization: %.2f%%)\n",
-                    vcpuInfo[leastUtilizedVcpu].vcpuID, maxPcpu, minPcpu, vcpuInfo[leastUtilizedVcpu].utilization);
-                vcpuInfo[leastUtilizedVcpu].currentPcpu = minPcpu;  // Update the current PCPU
+                    vcpuInfo[candidate].vcpuID, mostPcpu, leastPcpu, vcpuInfo[candidate].utilization);
+                vcpuInfo[candidate].currentPcpu = leastPcpu;  // Update the mapping
             }
-
             free(cpumap);
         }
+        else {
+            printf("No suitable candidate found for repinning.\n");
+        }
+    }
+    else {
+        printf("System is balanced, no repinning needed.\n");
     }
 
     free(totalUtil);
     free(count);
     free(avgUtil);
 }
+
 
 
 
