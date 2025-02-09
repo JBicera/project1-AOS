@@ -11,6 +11,15 @@
 #define MIN(a, b) ((a) < (b) ? a : b)
 #define MAX(a, b) ((a) > (b) ? a : b)
 
+typedef struct {
+    virDomainPtr domain; // Domain of VCPU
+    int vcpuID; // The ID of the VCPU (useful for identifying the VCPU)
+    int currentPcpu; // The current physical CPU the VCPU is pinned to
+    unsigned long long prevCpuTime;  // Previous CPU time for utilization calculation
+    unsigned long long currCpuTime;  // Current CPU time for utilization calculation
+    double utilization;
+} VcpuInfo;
+
 int is_exit = 0; // DO NOT MODIFY THIS VARIABLE
 VcpuInfo* vcpuInfo = NULL; // Declare globally
 int totalVcpus = 0; // Global total number of VCPUs
@@ -25,15 +34,6 @@ void signal_callback_handler()
     printf("Caught Signal");
     is_exit = 1;
 }
-
-typedef struct {
-    virDomainPtr domain; // Domain of VCPU
-    int vcpuID; // The ID of the VCPU (useful for identifying the VCPU)
-    int currentPcpu; // The current physical CPU the VCPU is pinned to
-    unsigned long long prevCpuTime;  // Previous CPU time for utilization calculation
-    unsigned long long currCpuTime;  // Current CPU time for utilization calculation
-    double utilization;
-} VcpuInfo;
 
 /*
 DO NOT CHANGE THE FOLLOWING FUNCTION
@@ -74,7 +74,7 @@ int main(int argc, char* argv[])
 }
 
 // Helper Function: Get PCPU information and return total PCPUs
-int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
+int getVcpuInfo(virDomainPtr* domains, int numDomains)
 {
     // Get total VCPUs in system
     int totalVcpusTemp = 0;
