@@ -103,7 +103,7 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
         }
         int numVcpus = info.nrVirtCpu;
 
-        prinft("Number of VCPUs: %d for domain: %d", numVcpus, i);
+        printf("Number of VCPUs: %d for domain: %d", numVcpus, i);
 
         // Allocate memory to store VCPU info for this domain
         virVcpuInfoPtr vcpuInfoArray = (virVcpuInfoPtr)malloc(sizeof(virVcpuInfo) * numVcpus);
