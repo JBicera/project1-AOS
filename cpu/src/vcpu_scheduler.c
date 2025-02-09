@@ -220,7 +220,8 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
 
     // Debug: Print per-PCPU average utilizations
     printf("PCPU average utilizations:\n");
-    for (int i = 0; i < numPcpus; i++) {
+    for (int i = 0; i < numPcpus; i++) 
+    {
         printf("PCPU %d: %.2f%% (with %d VCPUs)\n", i, avgUtil[i], count[i]);
     }
 
@@ -254,18 +255,33 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
 
         // Iterate over VCPUs on the max-loaded PCPU and repin those with high utilization.
         for (int i = 0; i < totalVcpus; i++) {
-            if (vcpuInfo[i].currentPcpu == maxPcpu && vcpuInfo[i].utilization >= avgUtil[maxPcpu]) {
+            if (vcpuInfo[i].currentPcpu == maxPcpu && vcpuInfo[i].utilization >= avgUtil[maxPcpu] * 0.8) // Repins VCPUs with at least 80% of the max-loaded PCPU's average utilization
+            {
                 // Attempt to repin the VCPU to the min-loaded PCPU.
                 int ret = virDomainPinVcpu(vcpuInfo[i].domain, vcpuInfo[i].vcpuID, cpumap, cpumapLen);
 
-                if (ret < 0) {
+                if (ret < 0) 
                     fprintf(stderr, "Error: Failed to repin VCPU %d in its domain\n", vcpuInfo[i].vcpuID);
-                }
-                else {
+                else 
+                {
                     printf("Repinned VCPU %d from PCPU %d to PCPU %d (Utilization: %.2f%%)\n",
                         vcpuInfo[i].vcpuID, maxPcpu, minPcpu, vcpuInfo[i].utilization);
                     // Update the currentPcpu field to reflect the new pinning.
                     vcpuInfo[i].currentPcpu = minPcpu;
+                }
+            }
+        }
+        // If no VCPUs were repinned, consider repinning VCPUs to other underutilized PCPUs
+        if (avgUtil[minPcpu] == 0 && count[minPcpu] == 0)
+        {
+            // Find a PCPU with non-zero utilization but low load
+            for (int i = 0; i < numPcpus; i++) 
+            {
+                if (avgUtil[i] < avgUtil[maxPcpu] * 0.5 && avgUtil[i] > 0) 
+                {
+                    minPcpu = i;
+                    cpumap[minPcpu / 8] |= (1 << (minPcpu % 8));
+                    break;
                 }
             }
         }
@@ -285,7 +301,8 @@ void CPUScheduler(virConnectPtr conn, int interval)
 
     // List all active domains
     numDomains = virConnectListAllDomains(conn,&domains, VIR_CONNECT_LIST_DOMAINS_ACTIVE);
-    if (numDomains < 0 || domains == NULL) {
+    if (numDomains < 0 || domains == NULL) 
+    {
         fprintf(stderr, "Failed to list domains\n");
         return;
     }
