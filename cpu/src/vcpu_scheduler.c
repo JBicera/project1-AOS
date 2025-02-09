@@ -209,15 +209,6 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
         }
     }
 
-    // Calculate average utilization per PCPU
-    double* avgUtil = (double*)calloc(numPcpus, sizeof(double));
-    for (int i = 0; i < numPcpus; i++) {
-        if (count[i] > 0)
-            avgUtil[i] = totalUtil[i] / count[i];
-        else
-            avgUtil[i] = 0;
-    }
-
     // Debug: Print per-PCPU average utilizations
     printf("PCPU average utilizations:\n");
     for (int i = 0; i < numPcpus; i++) {
@@ -235,37 +226,22 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
     printf("Most loaded PCPU: %d (avg: %.2f%%), Least loaded PCPU: %d (avg: %.2f%%)\n",
         mostPcpu, avgUtil[mostPcpu], leastPcpu, avgUtil[leastPcpu]);
 
-    // Only consider repinning if the difference exceeds the threshold
-    double currentDiff = avgUtil[mostPcpu] - avgUtil[leastPcpu];
-    if (currentDiff >= threshold) {
-        // Now, choose a candidate VCPU from the most loaded PCPU that, when moved to the least loaded PCPU,
-        // will reduce the overall imbalance.
+    if (totalUtil[mostPcpu] - totalUtil[leastPcpu] > threshold) 
+    {
         int candidate = -1;
-        double bestNewDiff = currentDiff; // Initialize with current difference
+        double lowestVcpuUtil = 100.0;
 
         // For each VCPU on the most loaded PCPU:
         for (int i = 0; i < totalVcpus; i++) {
-            if (vcpuInfo[i].currentPcpu == mostPcpu) {
-                // Simulate removal from mostPcpu:
-                double newSourceTotal = totalUtil[mostPcpu] - vcpuInfo[i].utilization;
-                int newSourceCount = (count[mostPcpu] > 1) ? (count[mostPcpu] - 1) : 1;
-                double newSourceAvg = newSourceTotal / newSourceCount;
-
-                // Simulate addition to leastPcpu:
-                double newTargetTotal = totalUtil[leastPcpu] + vcpuInfo[i].utilization;
-                int newTargetCount = count[leastPcpu] + 1;
-                double newTargetAvg = newTargetTotal / newTargetCount;
-
-                double simulatedDiff = newSourceAvg - newTargetAvg;
-                // Choose candidate if simulated difference is lower than current best
-                if (simulatedDiff < bestNewDiff) {
-                    bestNewDiff = simulatedDiff;
-                    candidate = i;
-                }
+            if (vcpuInfo[i].currentPcpu == mostPcpu || vcpuInfo[i].utilization < lowestVcpuUtil)
+            {
+                lowestVcpuUtil = vcpuInfo[i].utilization;
+                candidate = i;
             }
         }
 
         if (candidate != -1) {
+
             // Prepare cpumap that allows only the least loaded PCPU
             unsigned int cpumapLen = (numPcpus + 7) / 8;
             unsigned char* cpumap = (unsigned char*)calloc(cpumapLen, sizeof(unsigned char));
