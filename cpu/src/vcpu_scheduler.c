@@ -262,42 +262,61 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
             }
         }
 
-        // Identify underutilized VCPUs (those with utilization below a certain threshold)
-        printf("Identifying underutilized VCPUs to repin:\n");
-        for (int i = 0; i < totalVcpus; i++) {
-            if (vcpuInfo[i].utilization < threshold) {
+        // Identify the max-loaded and min-loaded PCPUs
+        int maxPcpu = 0, minPcpu = 0;
+        for (int i = 1; i < numPcpus; i++) {
+            if (avgUtil[i] > avgUtil[maxPcpu])
+                maxPcpu = i;
+            if (avgUtil[i] < avgUtil[minPcpu])
+                minPcpu = i;
+        }
+        // Check if the difference between max and min utilizations exceeds the deadband threshold
+        if (avgUtil[maxPcpu] - avgUtil[minPcpu] > threshold)
+        {
 
-                // Check if the VCPU is on an over-utilized PCPU or needs moving
-                if (vcpuInfo[i].currentPcpu != -1 && avgUtil[vcpuInfo[i].currentPcpu] > threshold) {
-                    // Attempt to repin the underutilized VCPU to a free or least-utilized PCPU
-                    if (freeCount > 0) {
-                        // We have free PCPUs, repin to one of them
-                        int newPcpu = freePcpus[--freeCount]; // Pick a free PCPU
-                        printf("Repinning VCPU %d from PCPU %d to free PCPU %d\n", vcpuInfo[i].vcpuID, vcpuInfo[i].currentPcpu, newPcpu);
+            // Create cpumap
+            unsigned int cpumapLen = (numPcpus + 7) / 8;
+            unsigned char* cpumap = (unsigned char*)calloc(cpumapLen, sizeof(unsigned char));
 
-                        unsigned int cpumapLen = (numPcpus + 7) / 8;
-                        unsigned char* cpumap = (unsigned char*)calloc(cpumapLen, sizeof(unsigned char));
-                        if (!cpumap) {
-                            fprintf(stderr, "Error allocating cpumap\n");
-                            free(totalUtil);
-                            free(count);
-                            free(avgUtil);
-                            free(freePcpus);
-                            return;
-                        }
+            if (!cpumap)
+            {
+                fprintf(stderr, "Error allocating cpumap\n");
+                free(totalUtil);
+                free(count);
+                free(avgUtil);
+                return;
+            }
 
-                        cpumap[newPcpu / 8] |= (1 << (newPcpu % 8)); // Set the free PCPU in the cpumap
+            // Find the least utilized VCPU on the max-loaded PCPU
+            int leastUtilizedVcpu = -1;
+            double lowestUtil = 100.0; // VCPU utilization can't exceed 100%
 
-                        int ret = virDomainPinVcpu(vcpuInfo[i].domain, vcpuInfo[i].vcpuID, cpumap, cpumapLen);
+            for (int i = 0; i < totalVcpus; i++)
+            {
+                if (vcpuInfo[i].currentPcpu == maxPcpu && vcpuInfo[i].utilization < lowestUtil)
+                {
+                    lowestUtil = vcpuInfo[i].utilization;
+                    leastUtilizedVcpu = i;
+                }
+            }
 
-                        if (ret < 0) {
-                            fprintf(stderr, "Error: Failed to repin VCPU %d\n", vcpuInfo[i].vcpuID);
-                        }
-                        else {
-                            printf("Successfully repinned VCPU %d from PCPU %d to PCPU %d\n", vcpuInfo[i].vcpuID, vcpuInfo[i].currentPcpu, newPcpu);
-                            vcpuInfo[i].currentPcpu = newPcpu; // Update VCPU's PCPU assignment
-                        }
-        free(cpumap);
+            // Repin the least utilized VCPU from max-loaded PCPU to min-loaded PCPU
+            if (leastUtilizedVcpu != -1)
+            {
+                int ret = virDomainPinVcpu(vcpuInfo[leastUtilizedVcpu].domain, vcpuInfo[leastUtilizedVcpu].vcpuID, cpumap, cpumapLen);
+                if (ret < 0)
+                {
+                    fprintf(stderr, "Error: Failed to repin VCPU %d from PCPU %d to PCPU %d\n",
+                        vcpuInfo[leastUtilizedVcpu].vcpuID, maxPcpu, minPcpu);
+                }
+                else
+                {
+                    printf("Repinned VCPU %d from PCPU %d to PCPU %d (Utilization: %.2f%%)\n",
+                        vcpuInfo[leastUtilizedVcpu].vcpuID, maxPcpu, minPcpu, vcpuInfo[leastUtilizedVcpu].utilization);
+                    vcpuInfo[leastUtilizedVcpu].currentPcpu = minPcpu;  // Update the current PCPU
+                }
+            }
+            free(cpumap);
     }
 
     free(totalUtil);
