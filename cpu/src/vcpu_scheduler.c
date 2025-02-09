@@ -188,7 +188,7 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
     for (int i = 0; i < totalVcpus; i++) {
         double util = ((double)(vcpuInfo[i].currCpuTime - vcpuInfo[i].prevCpuTime) / (1e9 * (double)interval)) * 100.0;
         vcpuInfo[i].utilization = util;
-        printf("UTIL: %d", util);
+        printf("UTIL: %f", util);
     }
 
     // Get number of PCPUs
