@@ -12,6 +12,8 @@
 #define MAX(a, b) ((a) > (b) ? a : b)
 
 int is_exit = 0; // DO NOT MODIFY THIS VARIABLE
+VcpuInfo* vcpuInfo = NULL; // Declare globally
+int totalVcpus = 0; // Global total number of VCPUs
 
 void CPUScheduler(virConnectPtr conn, int interval);
 
@@ -75,22 +77,25 @@ int main(int argc, char* argv[])
 int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
 {
     // Get total VCPUs in system
-    int totalVcpus = 0;
+    int totalVcpusTemp = 0;
     virDomainInfo info;
     for (int i = 0; i < numDomains; i++) {
         if (virDomainGetInfo(domains[i], &info) < 0) {
             fprintf(stderr, "Failed to get domain info\n");
             continue;
         }
-        totalVcpus += info.nrVirtCpu;
+        totalVcpusTemp += info.nrVirtCpu;
     }
 
 
-    // Allocate memory for vcpuInfo to store details for each VCPU
-    *vcpuInfo = (VcpuInfo*)calloc(totalVcpus, sizeof(VcpuInfo));
-    if (!*vcpuInfo) {
-        fprintf(stderr, "Error: Memory allocation failed for vcpuInfo\n");
-        return 0;
+    // Allocate memory for vcpuInfo only once
+    if (vcpuInfo == NULL) {
+        vcpuInfo = (VcpuInfo*)calloc(totalVcpusTemp, sizeof(VcpuInfo));
+        if (!vcpuInfo) {
+            fprintf(stderr, "Error: Memory allocation failed for vcpuInfo\n");
+            return 0;
+        }
+        totalVcpus = totalVcpusTemp;
     }
 
     // Now iterate through domains to collect VCPU and CPU stats data
@@ -284,8 +289,6 @@ void CPUScheduler(virConnectPtr conn, int interval)
 {
     virDomainPtr* domains = NULL;
     int numDomains = 0;
-    VcpuInfo* vcpuInfo = NULL;
-    int totalVcpus = 0;
 
     // List all active domains
     numDomains = virConnectListAllDomains(conn,&domains, VIR_CONNECT_LIST_DOMAINS_ACTIVE);
@@ -302,7 +305,7 @@ void CPUScheduler(virConnectPtr conn, int interval)
     totalVcpus = getVcpuInfo(domains, numDomains, &vcpuInfo); 
     
     // Run the repinning algorithm.
-    repinVcpus(conn, vcpuInfo, totalVcpus, interval, 0.15);
+    repinVcpus(conn, vcpuInfo, totalVcpus, interval, 0.1);
 
     free(vcpuInfo);
     free(domains);
