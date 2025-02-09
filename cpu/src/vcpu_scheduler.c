@@ -160,7 +160,7 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
             (*vcpuInfo)[vcpuIndex].currentPcpu = vcpuInfoArray[j].cpu;
             // Debug Print: Show collected vCPU information
             printf("VCPU[%d] (Domain: %d) -> PCPU: %d, Prev Time: %llu, Curr Time: %llu\n",
-                (*vcpuInfo)[vcpuIndex].vcpuID, i, (*vcpuInfo)[vcpuIndex].currentPCPU, (*vcpuInfo)[vcpuIndex].prevCpuTime, (*vcpuInfo)[vcpuIndex]currCpuTime);
+                (*vcpuInfo)[vcpuIndex].vcpuID, i, (*vcpuInfo)[vcpuIndex].currentPcpu, (*vcpuInfo)[vcpuIndex].prevCpuTime, (*vcpuInfo)[vcpuIndex]currCpuTime);
             // Move to the next index in the vcpuInfo array
             vcpuIndex++;
         }
@@ -189,7 +189,7 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
     // Calculate utilization for each VCPU (percentage)
     // Utilization = ((currCpuTime - prevCpuTime) / interval) * 100.0
     for (int i = 0; i < totalVcpus; i++) {
-        double util = ((double)(vcpuInfo[i].currCpuTime - vcpuInfo[i].prevCpuTime) / (1e9 * (double)interval_) * 100.0;
+        double util = ((double)(vcpuInfo[i].currCpuTime - vcpuInfo[i].prevCpuTime) / (1e9 * (double)interval)) * 100.0;
         vcpuInfo[i].utilization = util;
     }
 
