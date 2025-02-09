@@ -252,7 +252,7 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
 
         for (int i = 0; i < totalVcpus; i++)
         {
-            if (vcpuInfo[i].currentPcpu == mostPcpu && vcpuInfo[i].currentPcpu != leastPcpu) {
+            if (vcpuInfo[i].currentPcpu == maxPcpu && vcpuInfo[i].currentPcpu != minPcpu) {
                 if (vcpuInfo[i].utilization < lowestUtil) {
                     lowestUtil = vcpuInfo[i].utilization;
                     leastUtilizedVcpu = i;
