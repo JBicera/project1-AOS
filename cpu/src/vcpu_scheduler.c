@@ -181,6 +181,7 @@ int getNumPcpus(virConnectPtr conn) {
     return nodeInfo.cpus;
 }
 
+// Helper function to repin CPUs if the usage difference is beyond a certain threshold
 void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int interval, double threshold) {
     // Calculate utilization for each VCPU (percentage)
     // Utilization = ((currCpuTime - prevCpuTime) / interval) * 100.0
@@ -242,7 +243,7 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
 
         // Iterate over VCPUs on the max-loaded PCPU and repin those with high utilization.
         for (int i = 0; i < totalVcpus; i++) {
-            if (vcpuInfo[i].currentPcpu == maxPcpu && vcpuInfo[i].utilization > avgUtil[maxPcpu]) {
+            if (vcpuInfo[i].currentPcpu == maxPcpu && vcpuInfo[i].utilization >= avgUtil[maxPcpu]) {
                 // Attempt to repin the VCPU to the min-loaded PCPU.
                 int ret = virDomainPinVcpu(vcpuInfo[i].domain, vcpuInfo[i].vcpuID, cpumap, cpumapLen);
 
@@ -288,7 +289,7 @@ void CPUScheduler(virConnectPtr conn, int interval)
     totalVcpus = getVcpuInfo(domains, numDomains, &vcpuInfo); 
     
     // Run the repinning algorithm.
-    repinVcpus(conn, vcpuInfo, totalVcpus, interval, 0.1);
+    repinVcpus(conn, vcpuInfo, totalVcpus, interval, 0.15);
 
     free(vcpuInfo);
     free(domains);
