@@ -298,7 +298,7 @@ void CPUScheduler(virConnectPtr conn, int interval)
     }
 
     // Get VCPU information
-    totalVcpus = getVcpuInfo(domains, numDomains, &vcpuInfo); 
+    totalVcpus = getVcpuInfo(domains, numDomains); 
     
     // Run the repinning algorithm.
     repinVcpus(conn, vcpuInfo, totalVcpus, interval, 0.1);
