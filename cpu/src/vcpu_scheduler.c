@@ -223,8 +223,8 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
         if (avgUtil[i] < avgUtil[leastPcpu])
             leastPcpu = i;
     }
-    printf("Most loaded PCPU: %d (avg: %.2f%%), Least loaded PCPU: %d (avg: %.2f%%)\n",
-        mostPcpu, avgUtil[mostPcpu], leastPcpu, avgUtil[leastPcpu]);
+    printf("Most loaded PCPU: %d (avg: %.2f%%), Least loaded PCPU: %d (total: %.2f%%)\n",
+        mostPcpu, avgUtil[mostPcpu], leastPcpu, totalUtil[leastPcpu]);
 
     if (totalUtil[mostPcpu] - totalUtil[leastPcpu] > threshold) 
     {
