@@ -160,7 +160,7 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
             (*vcpuInfo)[vcpuIndex].currentPcpu = vcpuInfoArray[j].cpu;
             // Debug Print: Show collected vCPU information
             printf("VCPU[%d] (Domain: %d) -> PCPU: %d, Time: %llu\n",
-                vcpuList[j].number, i, vcpuList[j].cpu, vcpuList[j].cpuTime);
+                vcpuInfoArray[j].number, i, vcpuInfoArray[j].cpu, vcpuInfoArray[j].cpuTime);
             // Move to the next index in the vcpuInfo array
             vcpuIndex++;
         }
