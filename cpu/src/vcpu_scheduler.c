@@ -148,7 +148,7 @@ int getVcpuInfo(virDomainPtr* domains, int numDomains, VcpuInfo** vcpuInfo)
             { 
                 (*vcpuInfo)[vcpuIndex].prevCpuTime = vcpuInfoArray[j].cpuTime; // Initialize prevCpuTime
                 (*vcpuInfo)[vcpuIndex].currCpuTime = vcpuInfoArray[j].cpuTime; // Initialize currCpuTime
-                (*vcpuInfo)[vcpuIndex].vcpuID = vcpuInfoArray[j].number;
+                (*vcpuInfo)[vcpuIndex].vcpuID = j;
                 (*vcpuInfo)[vcpuIndex].domain = domains[i];
             }
             else {
