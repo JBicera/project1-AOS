@@ -311,10 +311,6 @@ void CPUScheduler(virConnectPtr conn, int interval)
         fprintf(stderr, "Failed to list domains\n");
         return;
     }
-    while (domains[numDomains] != NULL)
-    {
-        numDomains++; // Get domain count
-    }
 
     // Get VCPU information
     totalVcpus = getVcpuInfo(domains, numDomains); 
