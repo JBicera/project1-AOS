@@ -15,6 +15,7 @@ void MemoryScheduler(virConnectPtr conn, int interval);
 
 // Define a struct to store only the necessary memory stats in KB
 typedef struct {
+	virDomainPtr domain;
 	unsigned long unused;
 	unsigned long available;
 	unsigned long swapIn;
@@ -105,14 +106,13 @@ int getMemoryStats(virDomainPtr* domains, int numDomains)
 	for (int i = 0; i < numDomains; i++) 
 	{
 		virDomainPtr domain = domains[i];
-
+		stats[i].domain = domain;
 		// Fetch memory stats
 		int numStats = virDomainMemoryStats(domain, stats, VIR_DOMAIN_MEMORY_STAT_NR, 0);
 		if (numStats == -1) {
 			fprintf(stderr, "Error: Failed to get memory stats for domain %d\n", i);
 			return -1;
 		}
-
 		// Parse stats and store in our struct
 		for (int j = 0; j < numStats; j++) {
 			switch (stats[j].tag) 
@@ -276,7 +276,7 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 			}
 			else 
 			{
-				fprintf(stderr, "Failed to increase memory for domain %s\n", virDomainGetName(vmNeedMemory));
+				fprintf(stderr, "Failed to increase memory for domain %s\n", virDomainGetName(vmNeedMemory->domain));
 				break;
 			}
 		}
@@ -305,7 +305,7 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 		}
 		else 
 		{
-			fprintf(stderr, "Failed to decrease memory for domain %s\n", virDomainGetName(vmExcessMemory));
+			fprintf(stderr, "Failed to decrease memory for domain %s\n", virDomainGetName(vmExcessMemory->domain));
 			break;
 		}
 	}
