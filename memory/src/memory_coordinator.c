@@ -191,7 +191,7 @@ unsigned long getHostFreeMemory(virConnectPtr conn)
 // New reallocation algorithm: Adjust memory by 20% increments/decrements
 void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains, unsigned long freeHostMemory)
 {
-	const double ADJUST_PERCENTAGE = 0.25; // 25% gradual adjustment factor
+	const double ADJUST_PERCENTAGE = 0.20; // 25% gradual adjustment factor
 	const unsigned long MIN_VM_MEMORY = 100 * 1024; // 100 MB minimum free memory for host
 	const unsigned long MIN_HOST_FREE = 200 * 1024; // 200 MB minimum free memory for host
 
