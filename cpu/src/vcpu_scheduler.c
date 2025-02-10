@@ -251,7 +251,7 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
 
         // For each VCPU on the most loaded PCPU: Find minimum
         for (int i = 0; i < totalVcpus; i++) {
-            if (vcpuInfo[i].currentPcpu == maxPcpu || vcpuInfo[i].utilization < lowestVcpuUtil)
+            if (vcpuInfo[i].currentPcpu == maxPcpu && vcpuInfo[i].utilization < lowestVcpuUtil)
             {
                 lowestVcpuUtil = vcpuInfo[i].utilization;
                 minVcpu = i;

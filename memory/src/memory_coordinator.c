@@ -184,130 +184,73 @@ unsigned long getHostFreeMemory(virConnectPtr conn)
 	return freeMemory;  
 }
 
-// Helper function to reallocate memory across the entire system
-void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains, unsigned long freeHostMemory) 
+// New reallocation algorithm: Adjust memory by 20% increments/decrements
+void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains, unsigned long freeHostMemory)
 {
-	// Define thresholds in KB
-	unsigned long minVmUnused = 100 * 1024; // 100 MB minimum unused memory per VM
-	unsigned long minFreeMemory = 200 * 1024; // 200 MB minimum unused memory for Host
-	unsigned long memAdjustStep = 64 * 1024; // Step size for memory adjustment (64 MB)
+	const double ADJUST_PERCENTAGE = 0.25; // 25% gradual adjustment factor
+	const unsigned long MIN_VM_MEMORY = 100 * 1024; // 100 MB minimum free memory for host
+	const unsigned long MIN_HOST_FREE = 200 * 1024; // 200 MB minimum free memory for host
 
-	// Structs to store VMs with memory needs and excess
-	MemoryStats needMemoryVms[numDomains];
-	MemoryStats excessMemoryVms[numDomains];
-	int needMemoryCount = 0, excessMemoryCount = 0;
-
-	// For each domain, decide if we need to adjust memory allocation
-	for (int i = 0; i < numDomains; i++) 
+	// Iterate over all VMs to adjust memory allocations
+	for (int i = 0; i < numDomains; i++)
 	{
 		virDomainPtr domain = domains[i];
-		// Get the memory stats for this domain from our global array
-		MemoryStats dStats = domainMemoryStats[i];
+		MemoryStats stats = domainMemoryStats[i];
 
-		// Debug: print current domain info
-		printf("Domain %s: current memory = %lu KB, unused = %lu KB, available = %lu KB, swapIn = %lu KB, swapOut = %lu KB\n",
-			virDomainGetName(domain),
-			virDomainGetMaxMemory(domain),
-			dStats.unused,
-			dStats.available,
-			dStats.swapIn,
-			dStats.swapOut);
+		// Get current allocated memory for this domain
+		unsigned long currentMem = virDomainGetMaxMemory(domain);
 
-		// Policy 1: If VM needs more memory and the host has enough free memory
-		if ((dStats.unused < minVmUnused) || (dStats.swapIn > 0) || (dStats.swapOut > 0)) 
-			needMemoryVms[needMemoryCount++] = dStats;
-		
-		// Policy 2: If VM has excess memory
-		else if (dStats.unused > minVmUnused) 
-			excessMemoryVms[excessMemoryCount++] = dStats;
-		
-	}
+		// Calculate adjustment amount (25% of the current allocation)
+		unsigned long adjustAmount = (unsigned long)(currentMem * ADJUST_PERCENTAGE);
 
-	int i = 0, j = 0;
-	// First look for pairs of a VM that needs memory and VM that has excess
-	while (i < needMemoryCount && j < excessMemoryCount) 
-	{
-		MemoryStats* vmNeedMemory = &needMemoryVms[i];
-		MemoryStats* vmExcessMemory = &excessMemoryVms[j];
-
-		// Determine the memory adjustment for both
-		unsigned long newMemoryNeed = vmNeedMemory->available + memAdjustStep;
-		unsigned long newMemoryExcess = vmExcessMemory->available - memAdjustStep;
-
-
-		// Ensure newMemoryExcess doesn't go below the minimum allowed for host
-		if (newMemoryExcess < minVmUnused)
-			newMemoryExcess = minVmUnused;
-
-		// Only make changes if there is memory to faciliate the transfer
-		if ((freeHostMemory - memAdjustStep >= minFreeMemory) && virDomainSetMemory(vmNeedMemory->domain, newMemoryNeed) == 0 && virDomainSetMemory(vmExcessMemory->domain, newMemoryExcess) == 0) 
+		// Decide if the VM needs more memory or less 
+		// Needs more if unused is too little or is swapping in or out memory from disk
+		if (stats.unused < (currentMem * ADJUST_PERCENTAGE) || stats.swapIn > 0 || stats.swapOut > 0) 
 		{
-			printf("Adjusted memory: Domain %s increased to %lu KB, Domain %s decreased to %lu KB\n",
-				virDomainGetName(vmNeedMemory->domain), newMemoryNeed,
-				virDomainGetName(vmExcessMemory->domain), newMemoryExcess);
+			// Calculate  new allocation
+			unsigned long newMem = currentMem + adjustAmount;
 
-			// Update host free memory after the transaction
-			freeHostMemory -= memAdjustStep;
-			i++;
-			j++;
-		}
-		else
-			// If not enough free memory, break out of the loop
-			break;
-	}
-
-	// IF there are more VMs needing memory than having excess memory
-	while (i < needMemoryCount) 
-	{
-		MemoryStats* vmNeedMemory = &needMemoryVms[i];
-		unsigned long currentMemoryNeed = vmNeedMemory->available;
-
-		// Only proceed if host itself can supply the needed memory
-		if (freeHostMemory - memAdjustStep >= minFreeMemory) 
-		{
-			unsigned long newMemoryNeed = currentMemoryNeed + memAdjustStep;
-			if (virDomainSetMemory(vmNeedMemory->domain, newMemoryNeed) == 0)
+			// Ensure the host has enough free memory (Has at least 200 MB after transaction)
+			if (freeHostMemory >= adjustAmount + MIN_HOST_FREE)
 			{
-				printf("Increased memory for domain %s to %lu KB\n",
-					virDomainGetName(vmNeedMemory->domain), newMemoryNeed);
-
-				freeHostMemory -= memAdjustStep;
-				i++;
+				// Increase memory for domain
+				if (virDomainSetMemory(domain, newMem) == 0)
+				{
+					printf("Increased memory for domain %s from %lu KB to %lu KB\n", virDomainGetName(domain), currentMem, newMem);
+					
+					freeHostMemory -= adjustAmount; // ADjust the allocated memory from host free memory
+				}
+				else
+					fprintf(stderr, "Error: Failed to increase memory for domain %s\n",virDomainGetName(domain));
 			}
-			else 
+			else
+				printf("Insufficient host free memory to increase memory for domain %s\n",virDomainGetName(domain));
+		}
+		// Check if the VM has excess memory (Unused memory > 25% of current allocation)
+		else if (stats.unused > (currentMem * ADJUST_PERCENTAGE))
+		{
+			// Calculate the new allocation
+			unsigned long newMem = currentMem - adjustAmount;
+
+			// Ensure we do not reduce below the minimum allowed for a VM
+			if (newMem < MIN_VM_MEMORY)
 			{
-				fprintf(stderr, "Failed to increase memory for domain %s\n", virDomainGetName(vmNeedMemory->domain));
-				break;
+				newMem = MIN_VM_MEMORY;
+				adjustAmount = currentMem - MIN_VM_MEMORY; // Reclaim the actual memory difference
 			}
+			// Reclaim memory back to host
+			if (virDomainSetMemory(domain, newMem) == 0)
+			{
+				printf("Decreased memory for domain %s from %lu KB to %lu KB\n",
+					virDomainGetName(domain), currentMem, newMem);
+				// Return the reclaimed memory to the host pool
+				freeHostMemory += adjustAmount;
+			}
+			else
+				fprintf(stderr, "Error: Failed to decrease memory for domain %s\n", virDomainGetName(domain));
 		}
-		else 
-			break; // Host doesn't have enough memory to satisfy this need
-	}
-
-	// If there are more VMs with excess memory than VMs needing memory
-	while (j < excessMemoryCount) 
-	{
-		MemoryStats* vmExcessMemory = &excessMemoryVms[j];
-		unsigned long currentMemoryExcess = vmExcessMemory->available;
-
-		// Decrease memory and reclaim it back to the host
-		unsigned long newMemoryExcess = currentMemoryExcess - memAdjustStep;
-		if (newMemoryExcess < minVmUnused)
-			newMemoryExcess = minVmUnused;
-
-		if (virDomainSetMemory(vmExcessMemory->domain, newMemoryExcess) == 0)
-		{
-			printf("Decreased memory for domain %s to %lu KB\n",
-				virDomainGetName(vmExcessMemory->domain), newMemoryExcess);
-			// Update host free memory after the transaction
-			freeHostMemory += memAdjustStep;
-			j++;
-		}
-		else 
-		{
-			fprintf(stderr, "Failed to decrease memory for domain %s\n", virDomainGetName(vmExcessMemory->domain));
-			break;
-		}
+		else // No adjustment needed for this VM
+			printf("No adjustment needed for domain %s (current: %lu KB, unused: %lu KB)\n",virDomainGetName(domain), currentMem, stats.unused);
 	}
 }
 
