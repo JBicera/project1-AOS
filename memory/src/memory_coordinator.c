@@ -223,8 +223,10 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 		// Needs more if unused is too little or is swapping in or out memory from disk
 		if (usedMem > (currentMem * 0.75) || (stats.swapIn > stats.swapOut && stats.swapIn > 0))
 		{
+			unsigned long adjustAmount = (unsigned long)(currentMem * ADJUST_PERCENTAGE);
+
 			// Calculate  new allocation
-			unsigned long newMem = currentMem + (unsigned long)(currentMem * ADJUST_PERCENTAGE);
+			unsigned long newMem = currentMem + adjustAmount;
 
 			// Ensure we do not exceed the max allowed memory
 			if (newMem > maxAllowed) {
@@ -250,9 +252,11 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 		// Check if the VM has excess memory (Unused memory > 25% of current allocation)
 		else if (stats.unused > (currentMem * ADJUST_PERCENTAGE))
 		{
-			// Calculate the new allocation
-			unsigned long newMem = currentMem - (unsigned long)(currentMem * ADJUST_PERCENTAGE);
+			// Swap-out activity could mean over-allocation, so we may reduce memory
+			unsigned long adjustAmount = (unsigned long)(currentMem * ADJUST_PERCENTAGE);
 
+			// Ensure that we do not reduce memory below the minimum allowed for a VM (100 MB)
+			unsigned long newMem = currentMem - adjustAmount;
 			// Ensure we do not reduce below the minimum allowed for a VM
 			if (newMem < MIN_VM_MEMORY)
 			{
