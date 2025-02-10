@@ -249,12 +249,13 @@ void repinVcpus(virConnectPtr conn, VcpuInfo* vcpuInfo, int totalVcpus, int inte
         int minVcpu = -1;
         double lowestVcpuUtil = 100.0;
 
-        // For each VCPU on the most loaded PCPU: Find minimum
-        for (int i = 0; i < totalVcpus; i++) {
+        // For each VCPU on the most loaded PCPU: Find minimum VCPU to reassign 
+        for (int i = 0; i < totalVcpus; i++) 
+        {
             if (vcpuInfo[i].currentPcpu == maxPcpu && vcpuInfo[i].utilization < lowestVcpuUtil)
             {
                 lowestVcpuUtil = vcpuInfo[i].utilization;
-                minVcpu = i;
+                minVcpu = i; // Smallest VCPU has the smallest impact on memory reallocation and reduces load on PCPU
             }
         }
 

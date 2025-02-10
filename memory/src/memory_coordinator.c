@@ -16,6 +16,7 @@ void MemoryScheduler(virConnectPtr conn, int interval);
 // Define a struct to store only the necessary memory stats in KB
 typedef struct {
 	virDomainPtr domain;
+	unsigned long currentMem;
 	unsigned long unused;
 	unsigned long available;
 	unsigned long swapIn;
@@ -129,6 +130,9 @@ int getMemoryStats(virDomainPtr* domains, int numDomains)
 				case VIR_DOMAIN_MEMORY_STAT_SWAP_OUT:
 					domainMemoryStats[i].swapOut = stats[j].val;
 					break;
+				case VIR_DOMAIN_MEMORY_STAT_ACTUAL_BALLOON:
+					domainMemoryStats[i].currentMem = stats[j].val;
+					break;
 				default:
 					break; // Ignore other stats
 			}
@@ -197,11 +201,27 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 		virDomainPtr domain = domains[i];
 		MemoryStats stats = domainMemoryStats[i];
 
-		// Get current allocated memory for this domain
-		unsigned long currentMem = virDomainGetMaxMemory(domain);
+		// Get max allowed memory for this VM
+		unsigned long maxAllowed = virDomainGetMaxMemory(domain);
+		if (maxAllowed == 0) 
+		{
+			fprintf(stderr, "Error: Failed to retrieve max memory for domain %s\n", virDomainGetName(domain));
+			continue;
+		}
+
+		// Get current allocated memory from our pre-collected stats
+		unsigned long currentMem = stats.currentMem;
+		if (currentMem == 0) {
+			fprintf(stderr, "Error: Current memory stats not available for domain %s\n", virDomainGetName(domain));
+			continue;
+		}
 
 		// Calculate adjustment amount (25% of the current allocation)
 		unsigned long adjustAmount = (unsigned long)(currentMem * ADJUST_PERCENTAGE);
+
+		// Only adjust if the change is significant to avoid oscillations
+		if (adjustAmount < (currentMem * 0.05))
+			continue;
 
 		// Decide if the VM needs more memory or less 
 		// Needs more if unused is too little or is swapping in or out memory from disk
@@ -210,10 +230,16 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 			// Calculate  new allocation
 			unsigned long newMem = currentMem + adjustAmount;
 
+			// Ensure we do not exceed the max allowed memory
+			if (newMem > maxAllowed) {
+				newMem = maxAllowed;
+				adjustAmount = maxAllowed - currentMem;
+			}
+
 			// Ensure the host has enough free memory (Has at least 200 MB after transaction)
 			if (freeHostMemory >= adjustAmount + MIN_HOST_FREE)
 			{
-				// Increase memory for domain
+				// Increase memory for VM
 				if (virDomainSetMemory(domain, newMem) == 0)
 				{
 					printf("Increased memory for domain %s from %lu KB to %lu KB\n", virDomainGetName(domain), currentMem, newMem);
