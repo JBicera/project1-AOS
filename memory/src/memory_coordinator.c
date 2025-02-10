@@ -234,16 +234,13 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 		unsigned long newMemoryNeed = vmNeedMemory->available + memAdjustStep;
 		unsigned long newMemoryExcess = vmExcessMemory->available - memAdjustStep;
 
-		// Determine the memory adjustment for both
-		unsigned long newMemoryNeed = currentMemoryNeed + memAdjustStep;
-		unsigned long newMemoryExcess = currentMemoryExcess - memAdjustStep;
 
 		// Ensure newMemoryExcess doesn't go below the minimum allowed for host
 		if (newMemoryExcess < minVmUnused)
 			newMemoryExcess = minVmUnused;
 
 		// Only make changes if there is memory to faciliate the transfer
-		if ((freeHostMemory - memAdjustStep >= minFreeMemory) && virDomainSetMemory(vmNeedMemory, newMemoryNeed) == 0 && virDomainSetMemory(vmExcessMemory, newMemoryExcess) == 0) 
+		if ((freeHostMemory - memAdjustStep >= minFreeMemory) && virDomainSetMemory(vmNeedMemory->domain, newMemoryNeed) == 0 && virDomainSetMemory(vmExcessMemory->domain, newMemoryExcess) == 0) 
 		{
 			printf("Adjusted memory: Domain %s increased to %lu KB, Domain %s decreased to %lu KB\n",
 				virDomainGetName(vmNeedMemory->domain), newMemoryNeed,
@@ -263,7 +260,7 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 	while (i < needMemoryCount) 
 	{
 		MemoryStats* vmNeedMemory = &needMemoryVms[i];
-		unsigned long currentMemoryNeed = virDomainGetMaxMemory(vmNeedMemory->domain);
+		unsigned long currentMemoryNeed = vmNeedMemory->available;
 
 		// Only proceed if host itself can supply the needed memory
 		if (freeHostMemory - memAdjustStep >= minFreeMemory) 
@@ -291,7 +288,7 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 	while (j < excessMemoryCount) 
 	{
 		MemoryStats* vmExcessMemory = &excessMemoryVms[j];
-		unsigned long currentMemoryExcess = virDomainGetMaxMemory(vmExcessMemory->domain);
+		unsigned long currentMemoryExcess = vmExcessMemory->available;
 
 		// Decrease memory and reclaim it back to the host
 		unsigned long newMemoryExcess = currentMemoryExcess - memAdjustStep;
