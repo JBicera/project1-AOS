@@ -106,13 +106,13 @@ int getMemoryStats(virDomainPtr* domains, int numDomains)
 	for (int i = 0; i < numDomains; i++) 
 	{
 		virDomainPtr domain = domains[i];
-		stats[i].domain = domain;
 		// Fetch memory stats
 		int numStats = virDomainMemoryStats(domain, stats, VIR_DOMAIN_MEMORY_STAT_NR, 0);
 		if (numStats == -1) {
 			fprintf(stderr, "Error: Failed to get memory stats for domain %d\n", i);
 			return -1;
 		}
+		domainMemoryStats[i].domain = domain;
 		// Parse stats and store in our struct
 		for (int j = 0; j < numStats; j++) {
 			switch (stats[j].tag) 
