@@ -250,7 +250,7 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 				printf("Insufficient host free memory to increase memory for domain %s\n",virDomainGetName(domain));
 		}
 		// Check if the VM has excess memory (Unused memory > 25% of current allocation)
-		else if (stats.unused > (currentMem * ADJUST_PERCENTAGE))
+		else if (stats.unused > (currentMem * ADJUST_PERCENTAGE) && stats.swapOut == 0)
 		{
 			// Swap-out activity could mean over-allocation, so we may reduce memory
 			unsigned long adjustAmount = (unsigned long)(currentMem * ADJUST_PERCENTAGE);
