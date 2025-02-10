@@ -191,7 +191,7 @@ unsigned long getHostFreeMemory(virConnectPtr conn)
 // New reallocation algorithm: Adjust memory by 20% increments/decrements
 void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains, unsigned long freeHostMemory)
 {
-	const double ADJUST_PERCENTAGE = 0.20; // 25% gradual adjustment factor
+	const double ADJUST_PERCENTAGE = 0.25; // 25% gradual adjustment factor
 	const unsigned long MIN_VM_MEMORY = 100 * 1024; // 100 MB minimum free memory for host
 	const unsigned long MIN_HOST_FREE = 200 * 1024; // 200 MB minimum free memory for host
 
@@ -216,24 +216,20 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 			continue;
 		}
 
-		// Calculate adjustment amount (25% of the current allocation)
-		unsigned long adjustAmount = (unsigned long)(currentMem * ADJUST_PERCENTAGE);
-
-		// Only adjust if the change is significant to avoid oscillations
-		if (adjustAmount < (currentMem * 0.05))
-			continue;
+		// Calculate the used memory: used memory = currentMem - unused
+		unsigned long usedMem = currentMem - stats.unused;
 
 		// Decide if the VM needs more memory or less 
 		// Needs more if unused is too little or is swapping in or out memory from disk
-		if (stats.unused < (currentMem * ADJUST_PERCENTAGE) || stats.swapIn > 0 || stats.swapOut > 0) 
+		if (usedMem > (currentMem * 0.75) || (stats.swapIn > stats.swapOut && stats.swapIn > 0))
 		{
 			// Calculate  new allocation
-			unsigned long newMem = currentMem + adjustAmount;
+			unsigned long newMem = currentMem + (unsigned long)(currentMem * ADJUST_PERCENTAGE);
 
 			// Ensure we do not exceed the max allowed memory
 			if (newMem > maxAllowed) {
 				newMem = maxAllowed;
-				adjustAmount = maxAllowed - currentMem;
+				adjustAmount = maxAllowed - currentMem; // Reduce the adjustment to fit within the max
 			}
 
 			// Ensure the host has enough free memory (Has at least 200 MB after transaction)
@@ -243,7 +239,6 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 				if (virDomainSetMemory(domain, newMem) == 0)
 				{
 					printf("Increased memory for domain %s from %lu KB to %lu KB\n", virDomainGetName(domain), currentMem, newMem);
-					
 					freeHostMemory -= adjustAmount; // ADjust the allocated memory from host free memory
 				}
 				else
@@ -256,7 +251,7 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 		else if (stats.unused > (currentMem * ADJUST_PERCENTAGE))
 		{
 			// Calculate the new allocation
-			unsigned long newMem = currentMem - adjustAmount;
+			unsigned long newMem = currentMem - (unsigned long)(currentMem * ADJUST_PERCENTAGE);
 
 			// Ensure we do not reduce below the minimum allowed for a VM
 			if (newMem < MIN_VM_MEMORY)
