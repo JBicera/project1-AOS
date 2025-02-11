@@ -103,7 +103,6 @@ int getMemoryStats(virDomainPtr* domains, int numDomains)
 			domainMemoryStats[i].prevUnused = 0;
 			domainMemoryStats[i].unused = 0;  // Initialize unused memory
 			domainMemoryStats[i].currentMem = 0;
-			domainMemoryStats[i].maxMem = 0;
 		}
 	}
 
@@ -123,7 +122,6 @@ int getMemoryStats(virDomainPtr* domains, int numDomains)
 		// Preserve previous unused memory before updating it
 		domainMemoryStats[i].prevUnused = domainMemoryStats[i].unused;
 		domainMemoryStats[i].domain = domain;
-		domainMemoryStats[i].maxMem = virDomainGetMaxMemory(domain);
 		// Parse stats and store in our struct
 		for (int j = 0; j < numStats; j++) {
 			switch (stats[j].tag) 
@@ -200,49 +198,50 @@ void getHostMemoryStats(virConnectPtr conn, unsigned long* totalMemory, unsigned
 }
 
 // Function to dynamically reallocate memory for domains
-void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains, unsigned long totalHostMemory, unsigned long freeHostMemory) 
+void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains, unsigned long totalHostMemory, unsigned long freeHostMemory)
 {
 	float hostFreeRatio = (float)freeHostMemory / (float)totalHostMemory;
 	const unsigned long MIN_VM_MEMORY = 100 * 1024;
 	const float MEMORY_RATIO = 0.25;
 	unsigned long newMemory;
+
 	for (int i = 0; i < numDomains; i++)
 	{
 		virDomainPtr domain = domains[i];
 		MemoryStats VMstats = domainMemoryStats[i];
 		unsigned long currentMem = VMstats.currentMem;
+
 		// Check if unused memory is decreasing
 		bool decreasingUnused = (VMstats.unused < VMstats.prevUnused);
 
 		// Unused memory is decreasing/reaching minimum and host has memory to spare
-		if ((VMstats.unused <= MIN_VM_MEMORY) || (VMstats.unused < VMstats.prevUnused)) {
+		if ((VMstats.unused <= MIN_VM_MEMORY) || decreasingUnused) 
 		{
 			// Host has at least 25% free memory to give out to VMs
 			if (hostFreeRatio >= MEMORY_RATIO) 
 			{
 				newMemory = currentMem * (1 + MEMORY_RATIO);
 				// Allocate memory back to VM
-				if (virDomainSetMemory(domain, newMemory) == 0) 
+				if (virDomainSetMemory(domain, newMemory) == 0)
 					printf("Increased memory for domain %d to %lu KB\n", i, newMemory);
 				else
 					fprintf(stderr, "Failed to increase memory for domain %d\n", i);
 			}
 		}
 		// Unused memory is well above need and host is feeling memory pressure
-		else if (VMstats.unused >= MIN_VM_MEMORY * 1.5 && VMstats.unused > VMstats.prevUnused && hostFreeRatio < MEMORY_RATIO)
+		else if (VMstats.unused >= MIN_VM_MEMORY * 1.5 && !decreasingUnused && hostFreeRatio < MEMORY_RATIO)
 		{
 			newMemory = currentMem * (1 - MEMORY_RATIO);
-			if (virDomainSetMemory(domain, newMemory) == 0) {
-				printf("Increased memory for domain %d to %lu KB\n", i, newMemory);
-			}
-			else {
-				fprintf(stderr, "Failed to increase memory for domain %d\n", i);
-			}
+			if (virDomainSetMemory(domain, newMemory) == 0)
+				printf("Decreased memory for domain %d to %lu KB\n", i, newMemory);
+			else
+				fprintf(stderr, "Failed to decrease memory for domain %d\n", i);
 		}
 		else
 			printf("VM is stable or idle. No need to reallocate\n");
 	}
 }
+
 	
 
 /*
