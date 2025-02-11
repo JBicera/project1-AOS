@@ -212,7 +212,7 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 		unsigned long currentMem = VMstats.currentMem;
 
 		// Check if unused memory is decreasing
-		bool decreasingUnused = (VMstats.unused < VMstats.prevUnused);
+		int decreasingUnused = (VMstats.unused < VMstats.prevUnused);
 
 		// Unused memory is decreasing/reaching minimum and host has memory to spare
 		if ((VMstats.unused <= MIN_VM_MEMORY) || decreasingUnused) 
