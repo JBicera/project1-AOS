@@ -215,22 +215,18 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 	// Iterate over each domain to see if it either needs or has excess memory
 	for (int i = 0; i < numDomains; i++)
 	{
-		float domainFreeMemRatio = (float)domainMemoryStats[i].available / (float)domainMemoryStats[i].maxMem;
+		float domainUsedRatio = (float)(domainMemoryStats[i].currentMem - domainMemoryStats[i].available) / (float)domainMemoryStats[i].currentMem;
 
-		// If host's free memory ratio is low comapred to the baseline
-		if (freeHostMemory > HOST_FREE_MEMORY_THRESHOLD && currentFreeMemoryRatio < baselineFreeMemoryRatio - MEMORY_RATIO) {
+		// If the host free memory ratio is low (under pressure) and this domain is hungry:
+		if (freeHostMemory > HOST_FREE_MEMORY_THRESHOLD && currentFreeMemoryRatio < baselineFreeMemoryRatio - MEMORY_RATIO && domainUsedRatio > 0.75) {
+			// Increase memory for this domain (up to its maximum allowed)
 			unsigned long newMemory = MIN(domainMemoryStats[i].currentMem * (1 + MEMORY_RATIO), domainMemoryStats[i].maxMem);
-			// Set new main memory to the ratio increase OR the max amount allowed if newMemory is over
-			printf("Domain %d: Reallocating memory to %lu KB\n", i, newMemory);
 			virDomainSetMemory(domainMemoryStats[i].domain, newMemory);
 		}
-
-		// If domains have excess memory
-		else if (domainFreeMemRatio > MEMORY_RATIO)
-		{
-			// Domain has excess memory, so reduce the memory of the domain but not below 100 MB
+		// If the host free memory ratio is high (excess available) and this domain is underutilized:
+		else if (domainUsedRatio < 0.5) {
+			// Decrease memory for this domain (but not below the minimum)
 			unsigned long newMemory = MAX(domainMemoryStats[i].currentMem * (1 - MEMORY_RATIO), MIN_DOMAIN_MEMORY);
-			printf("Domain %d: Reducing memory to %lu KB\n", i, newMemory);
 			virDomainSetMemory(domainMemoryStats[i].domain, newMemory);
 		}
 	}
