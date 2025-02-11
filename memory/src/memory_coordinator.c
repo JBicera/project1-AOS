@@ -205,7 +205,7 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 
 	// Calculate free memory ratio of the host system
 	float currentFreeMemoryRatio = (float)freeHostMemory / totalHostMemory;
-	printf("Current free Host Memory: %lu KB\n", currentFreeMemoryRatio);
+	printf("Current free Host Memory: %f KB\n", currentFreeMemoryRatio);
 	// Initialize baseline memory ratio if hasn't already
 	// If currentFreeMemoryRatio < baselineMemoryRatio + MEMORY_RATIO = System has memory that is available to allocate
 	// If currentFreeMemoryRatio > baselineMemoryRatio + MEMORY_RATIO = System is under memory pressure
