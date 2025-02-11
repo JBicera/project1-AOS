@@ -353,7 +353,7 @@ void MemoryScheduler(virConnectPtr conn, int interval)
 	getHostMemoryStats(conn, &totalHostMemory, &freeHostMemory);
 
 	// Call to reallocate memory
-	reallocateMemory(conn, domains, numDomains, totalHostMemory, freeHostMemory);
+	reallocateMemory(conn, domains, numDomains, freeHostMemory);
 
  
 
