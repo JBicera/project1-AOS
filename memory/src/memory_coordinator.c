@@ -24,7 +24,8 @@ typedef struct {
 
 // Global array to store memory stats for all domains
 MemoryStats* domainMemoryStats = NULL;
-unsigned long baselineFreeMemoryRatio = 0;
+float baselineFreeMemoryRatio = 0;
+
 
 /*
 DO NOT CHANGE THE FOLLOWING FUNCTION
