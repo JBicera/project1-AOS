@@ -190,6 +190,8 @@ void getHostMemoryStats(virConnectPtr conn, unsigned long* totalMemory, unsigned
 			*freeMemory += stats[i].value;
 		}
 	}
+	// Debug print for final total and free memory values
+	printf("Host memory stats - Total: %lu KB, Free: %lu KB\n", *totalMemory, *freeMemory);
 
 	free(stats);
 }
