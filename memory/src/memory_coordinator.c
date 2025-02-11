@@ -230,7 +230,7 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 			}
 		}
 		else
-			print("VM is stable or idle. No need to reallocate\n");
+			printf("VM is stable or idle. No need to reallocate\n");
 	}
 }
 
