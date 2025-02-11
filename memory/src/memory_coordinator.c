@@ -205,7 +205,6 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 
 	// Calculate free memory ratio of the host system
 	unsigned long currentFreeMemoryRatio = (float)freeHostMemory / totalHostMemory;
-	printf("Current host memory ratio: %.2f\n", (float)currentFreeMemoryRatio);
 
 	// Initialize baseline memory ratio if hasn't already
 	// If currentFreeMemoryRatio < baselineMemoryRatio + MEMORY_RATIO = System has memory that is available to allocate
@@ -245,7 +244,8 @@ void MemoryScheduler(virConnectPtr conn, int interval)
 {
 	virDomainPtr* domains = NULL;
 	int numDomains = 0;
-	unsigned long totalHostMemory = 0, freeHostMemory = 0;
+	unsigned long totalHostMemory;
+	unsigned long freeHostMemory;
 
 	// Get list of all active domains
 	numDomains = virConnectListAllDomains(conn, &domains, VIR_CONNECT_LIST_DOMAINS_ACTIVE);
@@ -264,10 +264,8 @@ void MemoryScheduler(virConnectPtr conn, int interval)
 
 	// Get the amount of free memory the host has
 	getHostMemoryStats(conn, &totalHostMemory, &freeHostMemory);
-	if (totalHostMemory == 0 || freeHostMemory == 0) {
-		fprintf(stderr, "Failed to get valid host memory stats\n");
-		return;
-	}
+	printf("Total Host Memory: %lu KB\n", totalHostMemory);
+	printf("Free Host Memory: %lu KB\n", freeHostMemory);
 
 	// Call to reallocate memory
 	reallocateMemory(conn, domains, numDomains, totalHostMemory, freeHostMemory);
