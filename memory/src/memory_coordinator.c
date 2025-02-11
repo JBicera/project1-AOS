@@ -190,9 +190,6 @@ void getHostMemoryStats(virConnectPtr conn, unsigned long* totalMemory, unsigned
 			*freeMemory += stats[i].value;
 		}
 	}
-	// Debug print for final total and free memory values
-	printf("Host memory stats - Total: %lu KB, Free: %lu KB\n", *totalMemory, *freeMemory);
-
 	free(stats);
 }
 
@@ -267,8 +264,10 @@ void MemoryScheduler(virConnectPtr conn, int interval)
 
 	// Get the amount of free memory the host has
 	getHostMemoryStats(conn, &totalHostMemory, &freeHostMemory);
-	if (freeHostMemory == -1)
-		fprintf(stderr, "Failed to get host's free memory\n");
+	if (totalHostMemory == 0 || freeHostMemory == 0) {
+		fprintf(stderr, "Failed to get valid host memory stats\n");
+		return;
+	}
 
 	// Call to reallocate memory
 	reallocateMemory(conn, domains, numDomains, totalHostMemory, freeHostMemory);
