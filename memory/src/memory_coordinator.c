@@ -195,59 +195,52 @@ void getHostMemoryStats(virConnectPtr conn, unsigned long* totalMemory, unsigned
 }
 
 
-// New reallocation algorithm: Adjust memory by 20% ratio
-void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains, unsigned long totalHostMemory, unsigned long freeHostMemory) {
 
-	// Define constants for memory adjustments and thresholds
+// Memory Reallocation based on usage pattern
+void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains, unsigned long totalHostMemory, unsigned long freeHostMemory)
+{
 	const unsigned long MIN_DOMAIN_MEMORY = 100 * 1024;             // 100 MB minimum for any domain
-	const unsigned long HOST_FREE_MEMORY_THRESHOLD = 200 * 1024;      // Host must have at least 200 MB free
+	const unsigned long HOST_FREE_MEMORY_THRESHOLD = 200 * 1024;    // Host must have at least 200 MB free
 	const float MEMORY_RATIO = 0.2;                                   // 20% adjustment factor
 	const float HOST_DEVIATION_THRESHOLD = 0.2;                       // 20% deviation threshold for host ratio
 
-	// Calculate the host's free memory ratio as a float
 	float currentHostFreeRatio = (float)freeHostMemory / (float)totalHostMemory;
 	printf("Host Memory Stats: Total = %lu KB, Free = %lu KB\n", totalHostMemory, freeHostMemory);
 	printf("Current host free ratio: %.2f\n", currentHostFreeRatio);
 
-	// Initialize the baseline free memory ratio if not already set
 	if (baselineFreeMemoryRatio == 0)
 		baselineFreeMemoryRatio = currentHostFreeRatio;
-	printf("Baseline host free ratio: %.2f\n", (float)baselineFreeMemoryRatio);
+	printf("Baseline host free ratio: %.2f\n", baselineFreeMemoryRatio);
 
-	// Iterate over each domain to adjust memory allocations
-	for (int i = 0; i < numDomains; i++) {
-		// Calculate the domain's used memory ratio: 
-		// usedMemRatio = (currentMem - available) / currentMem
+	for (int i = 0; i < numDomains; i++)
+	{
+		// Calculate domain's used memory ratio
 		float domainUsedRatio = (float)(domainMemoryStats[i].currentMem - domainMemoryStats[i].unused) / (float)domainMemoryStats[i].currentMem;
 		printf("Domain %d: Current memory = %lu KB, Available = %lu KB, Used Ratio = %.2f\n",
 			i, domainMemoryStats[i].currentMem, domainMemoryStats[i].available, domainUsedRatio);
 
-		// If the host is under memory pressure (free ratio is lower than baseline by at least 20%)
-		// and this domain is hungry (used ratio > 0.75)
-		if (freeHostMemory > HOST_FREE_MEMORY_THRESHOLD && currentHostFreeRatio < baselineFreeMemoryRatio - HOST_DEVIATION_THRESHOLD && domainUsedRatio > 0.75) {
-			// Calculate new memory allocation by increasing current memory by 20%
+		if (freeHostMemory > HOST_FREE_MEMORY_THRESHOLD && currentHostFreeRatio < baselineFreeMemoryRatio - HOST_DEVIATION_THRESHOLD && domainUsedRatio > 0.75)
+		{
+			// Increase memory by 20%
 			unsigned long targetMem = domainMemoryStats[i].currentMem * (1 + MEMORY_RATIO);
-			// Do not exceed the maximum allowed memory for the domain
-			if (targetMem > domainMemoryStats[i].maxMem) {
+			if (targetMem > domainMemoryStats[i].maxMem)
 				targetMem = domainMemoryStats[i].maxMem;
-			}
 			printf("Domain %d is hungry. Increasing memory from %lu KB to %lu KB\n", i, domainMemoryStats[i].currentMem, targetMem);
 			if (virDomainSetMemory(domainMemoryStats[i].domain, targetMem) < 0)
 				fprintf(stderr, "Error: Failed to increase memory for domain %d\n", i);
 		}
-		// Else, if the domain is underutilized (used ratio is below 0.5), allow it to release memory
-		else if (domainUsedRatio < 0.5) {
-			// Calculate new memory allocation by decreasing current memory by 20%
+		else if (domainUsedRatio < 0.5)
+		{
+			// Reduce memory by 20%
 			unsigned long targetMem = domainMemoryStats[i].currentMem * (1 - MEMORY_RATIO);
-			// Ensure the new memory does not fall below the minimum threshold
-			if (targetMem < MIN_DOMAIN_MEMORY) {
+			if (targetMem < MIN_DOMAIN_MEMORY)
 				targetMem = MIN_DOMAIN_MEMORY;
-			}
 			printf("Domain %d is over-provisioned. Reducing memory from %lu KB to %lu KB\n", i, domainMemoryStats[i].currentMem, targetMem);
 			if (virDomainSetMemory(domainMemoryStats[i].domain, targetMem) < 0)
 				fprintf(stderr, "Error: Failed to reduce memory for domain %d\n", i);
 		}
-		else {
+		else
+		{
 			printf("Domain %d: No adjustment needed (Used Ratio: %.2f)\n", i, domainUsedRatio);
 		}
 	}
