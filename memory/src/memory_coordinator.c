@@ -195,56 +195,43 @@ void getHostMemoryStats(virConnectPtr conn, unsigned long* totalMemory, unsigned
 }
 
 // Function to dynamically reallocate memory for domains
-void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains, unsigned long totalHostMemory, unsigned long freeHostMemory) {
-	float currentFreeMemoryRatio;
-	unsigned long requiredMemory;
-	unsigned long freeMemoryBeforeAdjustment;
-	unsigned long memoryToAllocate;
-	unsigned long maxMem;
+void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains, unsigned long totalHostMemory, unsigned long freeHostMemory) 
+{
+	float hostFreeRatio = (float)freeHostMemory / (float)totalHostMemory;
+	const unsigned long MIN_VM_MEMORY = 100 * 1024;
+	const float MEMORY_RATIO = 0.2;
+	unsigned long newMemory;
+	unsigned long currentMem = VMstats.currentMem;
+	for (int i = 0; i < numDomains; i++)
+	{
+		virDomainPtr domain = domains[i];
+		MemoryStats VMstats = domainMemoryStats[i];
 
-	// Iterate over each domain to decide if memory needs to be adjusted
-	for (int i = 0; i < numDomains; i++) {
-		MemoryStats stats = domainMemoryStats[i];
-
-		// Calculate the free-to-total memory ratio for the domain
-		currentFreeMemoryRatio = (float)(stats.available) / stats.maxMem;
-
-		// If this is the first run, set the baseline ratio
-		if (baselineFreeMemoryRatio == 0)
-			baselineFreeMemoryRatio = currentFreeMemoryRatio;
-
-		// Determine the acceptable deviation
-		float acceptableDeviation = baselineFreeMemoryRatio * 0.2; // 10% deviation
-
-
-		// If the current ratio drops below the baseline by more than the acceptable deviation
-		if (currentFreeMemoryRatio < (baselineFreeMemoryRatio - acceptableDeviation) && freeHostMemory > 200 * 1024) {
-			// Calculate required memory for the domain, ensuring it does not exceed max memory
-			memoryToAllocate = MIN(stats.currentMem * 1.2, stats.maxMem);
-			printf("Increasing memory for domain %d, current: %lu, required: %lu, max: %lu\n", i, stats.currentMem, requiredMemory, maxMem);
-
-			// Increase memory for the domain (ensure it doesn't exceed the maximum limit)
-			if (virDomainSetMemory(domains[i], memoryToAllocate) < 0) {
+		// Unused memory is decreasing/reaching minimum and host has memory to spare
+		if (VMstats.unused <= MIN_VM_MEMORY && hostFreeRatio >= 0.75)
+		{
+			newMemory = currentMem * (1 + MEMORY_RATIO);
+			// Allocate memory
+			if (virDomainSetMemory(domain, newMemory) == 0) {
+				printf("Increased memory for domain %d to %lu KB\n", i, newMemory);
+			}
+			else {
 				fprintf(stderr, "Failed to increase memory for domain %d\n", i);
 			}
 		}
-		// If the free memory ratio exceeds the baseline, reduce memory
-		else if (currentFreeMemoryRatio > (baselineFreeMemoryRatio + acceptableDeviation)) {
-			// Ensure we leave at least 100MB of free memory
-			freeMemoryBeforeAdjustment = freeHostMemory - 100 * 1024; // 100MB
-
-			if (freeMemoryBeforeAdjustment > 0) {
-				// Calculate the memory reduction (e.g., 20% of free memory)
-				memoryToAllocate = stats.currentMem * 0.8; // Reduce by 20%
-
-				printf("Reducing memory for domain %d, current: %lu, reducing to: %lu\n", i, stats.currentMem, memoryToAllocate);
-
-				// Reduce memory for the domain but ensure we don’t reduce beyond the free memory available
-				if (virDomainSetMemory(domains[i], memoryToAllocate) < 0) {
-					fprintf(stderr, "Failed to reduce memory for domain %d\n", i);
-				}
+		// Unused memory is well above need and host is feeling memory pressure
+		else if (VMstats.unused >= MIN_VM_MEMORY * 1.5 && hostFreeRatio < 0.75)
+		{
+			newMemory = currentMem * (1 - MEMORY_RATIO);
+			if (virDomainSetMemory(domain, newMemory) == 0) {
+				printf("Increased memory for domain %d to %lu KB\n", i, newMemory);
+			}
+			else {
+				fprintf(stderr, "Failed to increase memory for domain %d\n", i);
 			}
 		}
+		else
+			print("VM is stable or idle. No need to reallocate\n");
 	}
 }
 

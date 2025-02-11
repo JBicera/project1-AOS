@@ -64,16 +64,15 @@ Steps
 Memory Reallocation Algorithm
 1. For each VM make sure we have
 - Unused free memory
-- swap_in and swap_out to detect memory pressure
-2. If a VM needs more memory and host has enough free memory then increase allocation
-- If domain's unused memory < 100 MB, or
-- If swap_in > 0 = Memory shortage, or
-- If swap_out > 0 = Memory Pressure
-- Store any VMs that satisfy any of these conditions
-3. If VM has excess memory, reduce allocation 
-- If domain's unused memory > 100 MB
-- Store any VMs that satisfy any of these conditions
-4. If there is enough memory, begin redistributing memory gradually among VMs that need it
-- Start by reclaiming and releasing memory based off if there is a pair of VM that needs memory and VM that has excess
-- If there are more memory starved VMs then release only if result of transaction leaves Host with > 200MB
-- If there are more memor excess VMs then reclaim memory back to host
+- Domain
+- Max memory
+2. If VM's unused memory decreases and reaches down to 100Mb then that signals that it is 
+running out of memory and that we need to allocate more to it.
+- Check if the host has enough memory to suport allocation. Allocate gradually so 20% of VM capacity
+- Track if host is running out of memory with usage percentage (Used/Total) * 100. 
+    - Start allocating more to host when usage is above 75%
+- If not then proceed to next step.
+3. If VM's unused memory stays high and is not decreasing + margin = VM is underutilize and can relase some memory
+- If we allocate to VM once it reaches 100MB, then release memory when it has 150MB at least.
+Allocate memory back to system so it can release that memory to other VMs
+- If memory is between 100MB and 150MB then do nothing
