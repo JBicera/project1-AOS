@@ -19,6 +19,7 @@ typedef struct {
 	unsigned long currentMem;
 	unsigned long unused;
 	unsigned long available;
+	unsigned long maxMem;
 } MemoryStats;
 
 // Global array to store memory stats for all domains
@@ -113,6 +114,7 @@ int getMemoryStats(virDomainPtr* domains, int numDomains)
 			return -1;
 		}
 		domainMemoryStats[i].domain = domain;
+		domainMemoryStats[i].maxMem = getDomainMaxMemory(domain);
 		// Parse stats and store in our struct
 		for (int j = 0; j < numStats; j++) {
 			switch (stats[j].tag) 
@@ -214,11 +216,11 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 	// Iterate over each domain to see if it either needs or has excess memory
 	for (int i = 0; i < numDomains; i++)
 	{
-		unsigned long domainFreeMemRatio = (float)domainMemoryStats[i].available / domainMemoryStats[i].totalMem;
+		unsigned long domainFreeMemRatio = (float)domainMemoryStats[i].available / domainMemoryStats[i].maxMem;
 
 		// Ensure host system is above minimum and host's memory ratio is above the baseline threshold
 		if (freeHostMemory > HOST_FREE_MEMORY_THRESHOLD && currentFreeMemoryRatio > baselineFreeMemoryRatio + MEMORY_RATIO_DEVIATION) {
-			unsigned long newMemory = MIN(domainMemoryStats[i].currentMem * (1 + MEMORY_RATIO), domainMemoryStats[i].totalMem);
+			unsigned long newMemory = MIN(domainMemoryStats[i].currentMem * (1 + MEMORY_RATIO), domainMemoryStats[i].maxMem);
 			// Set new main memory to the ratio increase OR the max amount allowed if newMemory is over
 			virDomainSetMemory(domainMemoryStats[i].domain, newMemory);
 		}
