@@ -216,14 +216,12 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 		// Determine the acceptable deviation
 		float acceptableDeviation = baselineFreeMemoryRatio * 0.2; // 10% deviation
 
-		// Retrieve the host free memory ratio
-		float hostFreeMemoryRatio = (float)(freeHostMemory) / totalHostMemory;
 
 		// If the current ratio drops below the baseline by more than the acceptable deviation
 		if (currentFreeMemoryRatio < (baselineFreeMemoryRatio - acceptableDeviation) && freeHostMemory > 200 * 1024) {
 			// Calculate required memory for the domain, ensuring it does not exceed max memory
 			memoryToAllocate = MIN(stats.currentMem * 1.2, stats.maxMem);
-			printf("Increasing memory for domain %d, current: %lu, required: %lu, max: %lu\n", i, stats->currentMem, requiredMemory, maxMem);
+			printf("Increasing memory for domain %d, current: %lu, required: %lu, max: %lu\n", i, stats.currentMem, requiredMemory, maxMem);
 
 			// Increase memory for the domain (ensure it doesn't exceed the maximum limit)
 			if (virDomainSetMemory(domains[i], memoryToAllocate) < 0) {
@@ -239,7 +237,7 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 				// Calculate the memory reduction (e.g., 20% of free memory)
 				memoryToAllocate = stats.currentMem * 0.8; // Reduce by 20%
 
-				printf("Reducing memory for domain %d, current: %lu, reducing to: %lu\n", i, stats->currentMem, memoryToAllocate);
+				printf("Reducing memory for domain %d, current: %lu, reducing to: %lu\n", i, stats.currentMem, memoryToAllocate);
 
 				// Reduce memory for the domain but ensure we don’t reduce beyond the free memory available
 				if (virDomainSetMemory(domains[i], memoryToAllocate) < 0) {
@@ -249,39 +247,6 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 		}
 	}
 }
-
-// Complete MemoryScheduler function with dynamic memory management
-void MemoryScheduler(virConnectPtr conn, int interval)
-{
-	virDomainPtr* domains = NULL;
-	int numDomains = 0;
-	unsigned long totalHostMemory;
-	unsigned long freeHostMemory;
-
-	// Get list of all active domains
-	numDomains = virConnectListAllDomains(conn, &domains, VIR_CONNECT_LIST_DOMAINS_ACTIVE);
-	if (numDomains < 0 || domains == NULL)
-	{
-		fprintf(stderr, "Failed to list domains\n");
-		return;
-	}
-
-	// Enable Memory Collection on all domains 
-	if (enableMemoryStats(domains, numDomains, 0) < 0) // 0 for default hypervisor period
-		fprintf(stderr, "Failed to enable memory stats\n");
-
-	if (getMemoryStats(domains, numDomains) < 0) // Allocates for or allocates for global memory stats array
-		fprintf(stderr, "Failed to get memory stats\n");
-
-	// Get the amount of free memory the host has
-	getHostMemoryStats(conn, &totalHostMemory, &freeHostMemory);
-
-	// Call to reallocate memory based on dynamic conditions
-	reallocateMemory(conn, domains, numDomains, totalHostMemory, freeHostMemory);
-
-	free(domains);
-}
-
 
 
 /*
