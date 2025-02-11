@@ -204,8 +204,8 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 
 
 	// Calculate free memory ratio of the host system
-	unsigned long currentFreeMemoryRatio = (float)freeHostMemory / totalHostMemory;
-
+	float currentFreeMemoryRatio = (float)freeHostMemory / totalHostMemory;
+	printf("Current free Host Memory: %lu KB\n", currentFreeMemoryRatio);
 	// Initialize baseline memory ratio if hasn't already
 	// If currentFreeMemoryRatio < baselineMemoryRatio + MEMORY_RATIO = System has memory that is available to allocate
 	// If currentFreeMemoryRatio > baselineMemoryRatio + MEMORY_RATIO = System is under memory pressure
@@ -215,7 +215,7 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 	// Iterate over each domain to see if it either needs or has excess memory
 	for (int i = 0; i < numDomains; i++)
 	{
-		unsigned long domainFreeMemRatio = (float)domainMemoryStats[i].available / domainMemoryStats[i].maxMem;
+		float domainFreeMemRatio = (float)domainMemoryStats[i].available / domainMemoryStats[i].maxMem;
 
 		// Ensure host system is above minimum and host's memory ratio is above the baseline threshold
 		if (freeHostMemory > HOST_FREE_MEMORY_THRESHOLD && currentFreeMemoryRatio > baselineFreeMemoryRatio + MEMORY_RATIO) {
@@ -264,8 +264,6 @@ void MemoryScheduler(virConnectPtr conn, int interval)
 
 	// Get the amount of free memory the host has
 	getHostMemoryStats(conn, &totalHostMemory, &freeHostMemory);
-	printf("Total Host Memory: %lu KB\n", totalHostMemory);
-	printf("Free Host Memory: %lu KB\n", freeHostMemory);
 
 	// Call to reallocate memory
 	reallocateMemory(conn, domains, numDomains, totalHostMemory, freeHostMemory);
