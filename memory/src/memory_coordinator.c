@@ -194,51 +194,75 @@ void getHostMemoryStats(virConnectPtr conn, unsigned long* totalMemory, unsigned
 	free(stats);
 }
 
-
 void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains, unsigned long totalHostMemory, unsigned long freeHostMemory) {
 	const unsigned long MIN_DOMAIN_MEMORY = 100 * 1024;
 	const float USED_RATIO_THRESHOLD_DIFF = 0.25;
 	const float ADJUSTMENT_RATIO = 0.2; // Adjust up to 20% of the difference
 
-	float maxUsedRatio = -1.0, minUsedRatio = 2.0;
-	int hungryIndex = -1, idleIndex = -1;
+	unsigned long totalUsedMemory = 0;
+	unsigned long totalFreeMemory = 0;
 
+	// Calculate the total used and free memory of all domains
 	for (int i = 0; i < numDomains; i++) {
-		float usedRatio = (float)(domainMemoryStats[i].currentMem - domainMemoryStats[i].unused) / (float)domainMemoryStats[i].currentMem;
-		if (usedRatio > maxUsedRatio) {
-			maxUsedRatio = usedRatio;
-			hungryIndex = i;
+		totalUsedMemory += domainMemoryStats[i].currentMem;
+		totalFreeMemory += domainMemoryStats[i].unused;
+	}
+
+	// Calculate the free memory ratio for the host
+	float freeMemoryRatio = (float)freeHostMemory / totalHostMemory;
+
+	// If there is a large difference in the amount of free memory, adjust memory allocation
+	if (freeMemoryRatio < baselineFreeMemoryRatio - USED_RATIO_THRESHOLD_DIFF) {
+		// Adjust memory allocation for hungry VMs (those with high memory utilization)
+		for (int i = 0; i < numDomains; i++) {
+			float currentRatio = (float)domainMemoryStats[i].currentMem / domainMemoryStats[i].maxMem;
+
+			if (currentRatio > 0.8) { // If VM is using more than 80% of its memory
+				unsigned long excessMemory = domainMemoryStats[i].currentMem - (domainMemoryStats[i].maxMem * 0.8);
+				unsigned long adjustment = (unsigned long)(excessMemory * ADJUSTMENT_RATIO);
+				unsigned long newMemory = domainMemoryStats[i].currentMem - adjustment;
+
+				// Ensure we don't go below the minimum allowed memory for a domain
+				if (newMemory < MIN_DOMAIN_MEMORY) {
+					newMemory = MIN_DOMAIN_MEMORY;
+				}
+
+				// Reallocate memory to the domain
+				if (virDomainSetMemory(domains[i], newMemory) < 0) {
+					fprintf(stderr, "Failed to adjust memory for domain %d\n", i);
+				}
+				else {
+					printf("Adjusted memory for domain %d to %lu KB\n", i, newMemory);
+				}
+			}
 		}
-		if (usedRatio < minUsedRatio) {
-			minUsedRatio = usedRatio;
-			idleIndex = i;
+	}
+	else if (freeMemoryRatio > baselineFreeMemoryRatio + USED_RATIO_THRESHOLD_DIFF) {
+		// If there's more free memory available, increase memory allocation for underutilized VMs
+		for (int i = 0; i < numDomains; i++) {
+			float currentRatio = (float)domainMemoryStats[i].currentMem / domainMemoryStats[i].maxMem;
+
+			if (currentRatio < 0.5) { // If VM is using less than 50% of its memory
+				unsigned long underutilizedMemory = domainMemoryStats[i].maxMem - domainMemoryStats[i].currentMem;
+				unsigned long adjustment = (unsigned long)(underutilizedMemory * ADJUSTMENT_RATIO);
+				unsigned long newMemory = domainMemoryStats[i].currentMem + adjustment;
+
+				// Ensure we don't exceed the maximum allowed memory for a domain
+				if (newMemory > domainMemoryStats[i].maxMem) {
+					newMemory = domainMemoryStats[i].maxMem;
+				}
+
+				// Reallocate memory to the domain
+				if (virDomainSetMemory(domains[i], newMemory) < 0) {
+					fprintf(stderr, "Failed to adjust memory for domain %d\n", i);
+				}
+				else {
+					printf("Adjusted memory for domain %d to %lu KB\n", i, newMemory);
+				}
+			}
 		}
 	}
-
-	if (hungryIndex == -1 || idleIndex == -1 || (maxUsedRatio - minUsedRatio) < USED_RATIO_THRESHOLD_DIFF) {
-		return;
-	}
-
-	unsigned long availableMemory = domainMemoryStats[idleIndex].unused;
-	unsigned long neededMemory = domainMemoryStats[hungryIndex].currentMem - domainMemoryStats[hungryIndex].unused;
-
-	unsigned long transferAmount = (unsigned long)(ADJUSTMENT_RATIO * (neededMemory < availableMemory ? neededMemory : availableMemory));
-
-	unsigned long newMemHungry = domainMemoryStats[hungryIndex].currentMem + transferAmount;
-	unsigned long newMemIdle = domainMemoryStats[idleIndex].currentMem - transferAmount;
-
-	if (newMemIdle < MIN_DOMAIN_MEMORY || freeHostMemory < transferAmount) {
-		return;
-	}
-
-	virDomainSetMemory(domainMemoryStats[hungryIndex].domain, newMemHungry);
-	virDomainSetMemory(domainMemoryStats[idleIndex].domain, newMemIdle);
 }
-
-
-
-
-
 
 
 /*
