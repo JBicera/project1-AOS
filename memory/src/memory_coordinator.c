@@ -222,16 +222,16 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 
 		// Ensure host system is above minimum and host's memory ratio is above the baseline threshold
 		if (freeHostMemory > HOST_FREE_MEMORY_THRESHOLD && currentFreeMemoryRatio > baselineFreeMemoryRatio + MEMORY_RATIO_DEVIATION) {
-			unsigned long newMemory = MIN(domainMemoryStats[i].totalMem * (1 + MEMORY_RATIO_DEVIATION), domainMemoryStats[i].totalMem);
+			unsigned long newMemory = MIN(domainMemoryStats[i].totalMem * (1 + MEMORY_RATIO), domainMemoryStats[i].totalMem);
 			// Set new main memory to the ratio increase OR the max amount allowed if newMemory is over
 			virDomainSetMemory(domainMemoryStats[i].domain, newMemory);
 		}
 
 		// If domains have excess memory
-		else if (domainFreeMemRatio > MEMORY_RATIO_DEVIATION) 
+		else if (domainFreeMemRatio > MEMORY_RATIO)
 		{
 			// Domain has excess memory, so reduce the memory of the domain but not below 100 MB
-			unsigned long newMemory = MAX(domainMemoryStats[i].currentMem * (1 - MEMORY_RATIO_DEVIATION), MIN_DOMAIN_MEMORY);
+			unsigned long newMemory = MAX(domainMemoryStats[i].currentMem * (1 - MEMORY_RATIO), MIN_DOMAIN_MEMORY);
 			virDomainSetMemory(domainMemoryStats[i].domain, newMemory);
 		}
 	}
