@@ -201,12 +201,11 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 	const unsigned long MIN_VM_MEMORY = 100 * 1024;
 	const float MEMORY_RATIO = 0.2;
 	unsigned long newMemory;
-	unsigned long currentMem = VMstats.currentMem;
 	for (int i = 0; i < numDomains; i++)
 	{
 		virDomainPtr domain = domains[i];
 		MemoryStats VMstats = domainMemoryStats[i];
-
+		unsigned long currentMem = VMstats.currentMem;
 		// Unused memory is decreasing/reaching minimum and host has memory to spare
 		if (VMstats.unused <= MIN_VM_MEMORY && hostFreeRatio >= 0.75)
 		{
