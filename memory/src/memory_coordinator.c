@@ -218,7 +218,7 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 	for (int i = 0; i < numDomains; i++) {
 		// Calculate the domain's used memory ratio: 
 		// usedMemRatio = (currentMem - available) / currentMem
-		float domainUsedRatio = (float)(domainMemoryStats[i].currentMem - domainMemoryStats[i].available) / (float)domainMemoryStats[i].currentMem;
+		float domainUsedRatio = (float)(domainMemoryStats[i].currentMem - domainMemoryStats[i].unused) / (float)domainMemoryStats[i].currentMem;
 		printf("Domain %d: Current memory = %lu KB, Available = %lu KB, Used Ratio = %.2f\n",
 			i, domainMemoryStats[i].currentMem, domainMemoryStats[i].available, domainUsedRatio);
 
