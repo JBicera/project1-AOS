@@ -114,7 +114,7 @@ int getMemoryStats(virDomainPtr* domains, int numDomains)
 			return -1;
 		}
 		domainMemoryStats[i].domain = domain;
-		domainMemoryStats[i].maxMem = getDomainMaxMemory(domain);
+		domainMemoryStats[i].maxMem = virDomainGetMaxMemory(domain);
 		// Parse stats and store in our struct
 		for (int j = 0; j < numStats; j++) {
 			switch (stats[j].tag) 
