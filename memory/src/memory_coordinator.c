@@ -204,7 +204,7 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 
 
 	// Calculate free memory ratio of the host system
-	float currentFreeMemoryRatio = (float)freeHostMemory / totalHostMemory;
+	float currentFreeMemoryRatio = (float)freeHostMemory / (float)totalHostMemory;
 	printf("Current free Host Memory: %f KB\n", currentFreeMemoryRatio);
 	// Initialize baseline memory ratio if hasn't already
 	// If currentFreeMemoryRatio < baselineMemoryRatio + MEMORY_RATIO = System has memory that is available to allocate
@@ -215,10 +215,10 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 	// Iterate over each domain to see if it either needs or has excess memory
 	for (int i = 0; i < numDomains; i++)
 	{
-		float domainFreeMemRatio = (float)domainMemoryStats[i].available / domainMemoryStats[i].maxMem;
+		float domainFreeMemRatio = (float)domainMemoryStats[i].available / (float)domainMemoryStats[i].maxMem;
 
-		// Ensure host system is above minimum and host's memory ratio is above the baseline threshold
-		if (freeHostMemory > HOST_FREE_MEMORY_THRESHOLD && currentFreeMemoryRatio > baselineFreeMemoryRatio + MEMORY_RATIO) {
+		// If host's free memory ratio is low comapred to the baseline
+		if (freeHostMemory > HOST_FREE_MEMORY_THRESHOLD && currentFreeMemoryRatio < baselineFreeMemoryRatio - MEMORY_RATIO) {
 			unsigned long newMemory = MIN(domainMemoryStats[i].currentMem * (1 + MEMORY_RATIO), domainMemoryStats[i].maxMem);
 			// Set new main memory to the ratio increase OR the max amount allowed if newMemory is over
 			printf("Domain %d: Reallocating memory to %lu KB\n", i, newMemory);
