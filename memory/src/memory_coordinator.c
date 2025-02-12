@@ -129,7 +129,7 @@ int getMemoryStats(virDomainPtr* domains, int numDomains)
 				case VIR_DOMAIN_MEMORY_STAT_UNUSED:
 					domainMemoryStats[i].unused = stats[j].val;
 					break;
-				case VIR_DOMAIN_MEMORY_STAT_ACTUAL_BALLOON:
+				case VIR_DOMAIN_MEMORY_STAT_RSS:
 					domainMemoryStats[i].currentMem = stats[j].val;
 					break;
 				default:
