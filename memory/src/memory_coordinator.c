@@ -19,6 +19,7 @@ typedef struct {
 	unsigned long currentMem;
 	unsigned long unused;
 	unsigned long prevUnused;
+	unsigned long maxMem;
 } MemoryStats;
 
 // Global array to store memory stats for all domains
@@ -122,6 +123,7 @@ int getMemoryStats(virDomainPtr* domains, int numDomains)
 		// Preserve previous unused memory before updating it
 		domainMemoryStats[i].prevUnused = domainMemoryStats[i].unused;
 		domainMemoryStats[i].domain = domain;
+		domainMemoryStats[i].maxMem = virDomainGetMaxMemory(domain);
 		// Parse stats and store in our struct
 		for (int j = 0; j < numStats; j++) {
 			switch (stats[j].tag) 
@@ -220,6 +222,10 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 			// Host has at least 25% free memory to give out to VMs
 			if (hostFreeRatio >= MEMORY_RATIO) 
 			{
+				// Cap memory to max limit
+				if (newMemory > maxMemory) {
+					newMemory = maxMemory; 
+				}
 				newMemory = currentMem * (1 + MEMORY_RATIO);
 				// Allocate memory back to VM
 				if (virDomainSetMemory(domain, newMemory) == 0)

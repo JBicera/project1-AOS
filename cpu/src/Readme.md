@@ -45,16 +45,17 @@ Steps/To-Do List
 7. Update the VCPU assignment to its optimal CPU using virDomainPinVcpu
 
 
-Repinning Pseudocode
+Repinning (repinVCPU()) Pseudocode
 1. Collect Utilization Data
 	- Retrieve VCPU utilization across all domains
 	- Retrieve PCPu utilization by summing VCPU utilization for each PCPU 
 2. Identify PCPU with most and least utilization
 3. If difference between max and min utilization is above a threshold then proceed
 	- If not don't repin
+	- If yes then continue
 4. Find most underutilized VCPU in the max PCPU
 5. Create and allocate cpumap that points only to min PCPU
-6.. If the minmimum VCPU exists then repin it to the minimally utilized PCPU
+6. If the minmimum VCPU exists then repin it to the minimally utilized PCPU
 
 Get VCPU Information Pseudocode
 1. Get total VCPUs in the system
