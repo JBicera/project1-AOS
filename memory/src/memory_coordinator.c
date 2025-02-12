@@ -12,19 +12,21 @@
 int is_exit = 0; // DO NOT MODIFY THE VARIABLE
 
 void MemoryScheduler(virConnectPtr conn, int interval);
+int enableMemoryStats(virDomainPtr* domains, int numDomains, int period);
+int getMemoryStats(virDomainPtr* domains, int numDomains);
+void getHostMemoryStats(virConnectPtr conn, unsigned long* totalMemory, unsigned long* freeMemory);
+void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains, unsigned long totalHostMemory, unsigned long freeHostMemory);
 
 // Define a struct to store only the necessary memory stats in KB
 typedef struct {
-	virDomainPtr domain;
-	unsigned long currentMem;
-	unsigned long unused;
-	unsigned long prevUnused;
-	unsigned long maxMem;
+	virDomainPtr domain; // Domain of VM
+	unsigned long currentMem; // Current memory that VM is using
+	unsigned long unused; // Unused memory allocated to VM
+	unsigned long prevUnused; // Unused memory from previous check
+	unsigned long maxMem; // Total maximum memory the VM can have
 } MemoryStats;
 
-// Global array to store memory stats for all domains
-MemoryStats* domainMemoryStats = NULL;
-float baselineFreeMemoryRatio = 0;
+MemoryStats* domainMemoryStats = NULL; // Global array to store memory stats for all domains
 
 
 /*
@@ -86,6 +88,7 @@ int enableMemoryStats(virDomainPtr* domains,int numDomains, int period)
 	}
 	return 1;
 }
+
 // Function to initialize and collect memory stats for all domains
 int getMemoryStats(virDomainPtr* domains, int numDomains) 
 {
@@ -102,8 +105,9 @@ int getMemoryStats(virDomainPtr* domains, int numDomains)
 		// Initialize all values to 0 for the first run
 		for (int i = 0; i < numDomains; i++) {
 			domainMemoryStats[i].prevUnused = 0;
-			domainMemoryStats[i].unused = 0;  // Initialize unused memory
+			domainMemoryStats[i].unused = 0;  
 			domainMemoryStats[i].currentMem = 0;
+			domainMemoryStats[i].maxMem = 0;
 		}
 	}
 
@@ -177,7 +181,7 @@ void getHostMemoryStats(virConnectPtr conn, unsigned long* totalMemory, unsigned
 		free(stats);
 		*totalMemory = 0;
 		*freeMemory = 0;
-		return;  // Return 0 if the retrieval fails
+		return;  
 	}
 
 	// Initialize total and free memory values to 0
@@ -188,13 +192,9 @@ void getHostMemoryStats(virConnectPtr conn, unsigned long* totalMemory, unsigned
 	for (int i = 0; i < nstats; i++)
 	{
 		if (strcmp(stats[i].field, "total") == 0)
-		{
 			*totalMemory += stats[i].value;
-		}
 		else if (strcmp(stats[i].field, "free") == 0)
-		{
 			*freeMemory += stats[i].value;
-		}
 	}
 	free(stats);
 }
@@ -207,6 +207,7 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 	const float MEMORY_RATIO = 0.25;
 	unsigned long newMemory;
 
+	// Iterate through all VMs
 	for (int i = 0; i < numDomains; i++)
 	{
 		virDomainPtr domain = domains[i];
@@ -223,10 +224,11 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 			// Host has at least 25% free memory to give out to VMs
 			if (hostFreeRatio >= MEMORY_RATIO) 
 			{
+				newMemory = currentMem * (1 + MEMORY_RATIO);
 				// Cap memory to max limit
 				if (newMemory > maxMemory) 
 					newMemory = maxMemory; 
-				newMemory = currentMem * (1 + MEMORY_RATIO);
+
 				// Allocate memory back to VM
 				if (virDomainSetMemory(domain, newMemory) == 0)
 					printf("Increased memory for domain %d to %lu KB\n", i, newMemory);
@@ -234,7 +236,7 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 					fprintf(stderr, "Failed to increase memory for domain %d\n", i);
 			}
 		}
-		// Unused memory is well above need and host is feeling memory pressure
+		// Unused memory is well above need/is not increasing and host is feeling memory pressure
 		else if (VMstats.unused >= MIN_VM_MEMORY * 1.5 && !decreasingUnused && hostFreeRatio < MEMORY_RATIO)
 		{
 			newMemory = currentMem * (1 - MEMORY_RATIO);
@@ -280,8 +282,6 @@ void MemoryScheduler(virConnectPtr conn, int interval)
 
 	// Call to reallocate memory
 	reallocateMemory(conn, domains, numDomains, totalHostMemory, freeHostMemory);
-
- 
 
 	free(domains);
 }

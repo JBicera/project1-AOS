@@ -61,18 +61,34 @@ Steps
 8. Create a periodic memory scheduler
 9. Test memory coordinator
 
-Memory Reallocation Algorithm
+
+Memory Coordinator Algorithm
+1. Get list of all domains
+2. Iterate through all domains and enable memory stat collection
+3. Call helper function getMemoryStats 
+4. Call helper functio getHostMemoryStats that obtains the currently free and total memory allocated to all VMs as a whole
+5. Call memory reallocation algorithm
+
+Memory Reallocation Pseudocode
 1. For each VM make sure we have
 - Unused free memory
 - Domain
 - Max memory
-2. If VM's unused memory decreases and reaches down to 100Mb then that signals that it is 
-running out of memory and that we need to allocate more to it.
-- Check if the host has enough memory to suport allocation. Allocate gradually so 20% of VM capacity
-- Track if host is running out of memory with usage percentage (Used/Total) * 100. 
-    - Start allocating more to host when usage is above 75%
-- If not then proceed to next step.
-3. If VM's unused memory stays high and is not decreasing + margin = VM is underutilize and can relase some memory
-- If we allocate to VM once it reaches 100MB, then release memory when it has 150MB at least.
-Allocate memory back to system so it can release that memory to other VMs
-- If memory is between 100MB and 150MB then do nothing
+2. Store key constant variables such as minimum free memory for VMs and Host
+3. Iterate through all VMs
+4. Check if unused memory is decreasing by comparing current unused to previous unused
+- If (Memory is less than minimum VM threshold or unused memory is decreasing) and the host has excess memory to share
+    - Calculate new memory amount which would be 120% current amount (Gradual increase)
+    - Check if new memory does not go over max memory limit for VM
+    - Allocate memory from host to VM
+- Else if unused memory is increasing and unused is well above minimum (150%) and the host is feeling memory pressure
+    - Calculate memory decrease (80%)
+    - Allocate memory back to the host
+- If memory is between 100MB and 150MB and unused is not increasing/decreasing then it is in a stable zone
+
+
+Get Memory Stats Pseudocode
+1. If global struct is NULL then allocate memory and initialize values to zero
+2. Allocate a temporary array of stats for each individual VM
+3. Iterate through all VMs and for each iterate through their stats to collect necessary values to store in global struct
+
