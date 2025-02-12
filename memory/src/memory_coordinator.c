@@ -219,13 +219,13 @@ void reallocateMemory(virConnectPtr conn, virDomainPtr* domains, int numDomains,
 		// Unused memory is decreasing/reaching minimum and host has memory to spare
 		if ((VMstats.unused <= MIN_VM_MEMORY) || decreasingUnused) 
 		{
+			unsigned long maxMemory = VMstats.maxMem;
 			// Host has at least 25% free memory to give out to VMs
 			if (hostFreeRatio >= MEMORY_RATIO) 
 			{
 				// Cap memory to max limit
-				if (newMemory > maxMemory) {
+				if (newMemory > maxMemory) 
 					newMemory = maxMemory; 
-				}
 				newMemory = currentMem * (1 + MEMORY_RATIO);
 				// Allocate memory back to VM
 				if (virDomainSetMemory(domain, newMemory) == 0)
